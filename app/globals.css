@@ -1,0 +1,584 @@
+@import "tailwindcss";
+
+/* ============================================================
+   PRD §5.2 Colour tokens — all sampled from cv-reference.jpg
+   ============================================================ */
+@theme {
+  --color-cream: #f5efe3;
+  --color-surface: #eee9dd;
+  --color-line: #dad5cd;
+  --color-ink: #13182b;
+  --color-body: #424242;
+  --color-muted: #666666;
+  --color-signal: #f65117;
+  --color-signal-tint: #f5e2d3;
+  --color-ember: #bb3607;
+
+  /* Dashboard surfaces — the same family as the site, one step calmer.
+     `panel` is where you type; `card` lifts a group off the cream. */
+  --color-panel: #ffffff;
+  --color-card: #fbf8f2;
+  --color-line-strong: #cfc8ba;
+
+  --radius-pill: 999px;
+  --radius-admin: 8px;
+  --radius-card: 12px;
+
+  /* PRD §5.5 spacing scale */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 24px;
+  --spacing-6: 32px;
+  --spacing-7: 48px;
+  --spacing-8: 64px;
+  --spacing-9: 96px;
+  --spacing-10: 128px;
+  --spacing-11: 160px;
+}
+
+/* Fonts are loaded with next/font and exposed as CSS variables. */
+@theme inline {
+  --font-display: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-script: var(--font-greeting), "Snell Roundhand", "Apple Chancery", cursive;
+}
+
+/* ============================================================
+   PRD §5.3 Type scale + §5.5 layout tokens
+   cqi resolves against the nearest container ancestor → .page
+   ============================================================ */
+:root {
+  --fs-name: clamp(3.25rem, 16cqi, 14.5rem);
+  --fs-name-2line: clamp(3.25rem, 28cqi, 8rem);
+  --fs-display-xl: clamp(3rem, 8.2cqi, 7.5rem);
+  --fs-display-l: clamp(2.25rem, 5.4cqi, 5rem);
+  --fs-h2: clamp(2rem, 4cqi, 3.75rem);
+  --fs-h3: clamp(1.5rem, 2.8cqi, 2.75rem);
+  --fs-pill-xl: clamp(1.25rem, 2.2cqi, 2.125rem);
+  --fs-lead: clamp(1.0625rem, 0.9rem + 0.6cqi, 1.5rem);
+  --fs-label-caps: clamp(1rem, 1.35cqi, 1.25rem);
+  --fs-index: clamp(1rem, 1.4cqi, 1.375rem);
+  --gutter: clamp(1.25rem, 4cqi, 4rem);
+  --section-y: clamp(4rem, 9cqi, 9rem);
+  --stroke-brand: 2px;
+  --gallery-gap: 16px;
+}
+@media (min-width: 1024px) {
+  :root {
+    --stroke-brand: 3px;
+    --gallery-gap: 24px;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Nav is sticky; keep anchored chapters clear of it. */
+  scroll-padding-top: 5rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-body);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* PRD GLB-05 — no horizontal scrolling at any width */
+  overflow-x: clip;
+}
+
+.page {
+  container-type: inline-size;
+  max-width: 1440px;
+  margin-inline: auto;
+}
+.gutter { padding-inline: var(--gutter); }
+
+/* PRD §5.2 rule 4 — one focus ring everywhere, visible on Cream and on Signal */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+@layer components {
+  /* ============================================================
+     PRD §5.3 Type roles
+     ============================================================ */
+  .t-display-name {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: calc(var(--fs-name) * var(--name-scale, 1));
+    line-height: 0.82;
+    letter-spacing: -0.055em;
+  }
+
+  /* HERO-03 — the name always fits. Layout is decided in CSS, not JS, so the
+     "auto" mode can react to the viewport as well as to the name's length. */
+  .t-display-name .name-part { display: inline; }
+  .t-display-name .name-part + .name-part::before { content: " "; }
+
+  .t-display-name[data-layout="two-lines"] {
+    font-size: calc(var(--fs-name-2line) * var(--name-scale, 1));
+  }
+  .t-display-name[data-layout="two-lines"] .name-part { display: block; }
+  .t-display-name[data-layout="two-lines"] .name-part + .name-part::before { content: none; }
+
+  @media (max-width: 639px) {
+    .t-display-name[data-layout="auto"] {
+      font-size: calc(var(--fs-name-2line) * var(--name-scale, 1));
+    }
+    .t-display-name[data-layout="auto"] .name-part { display: block; }
+    .t-display-name[data-layout="auto"] .name-part + .name-part::before { content: none; }
+  }
+  .t-display-xl {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--fs-display-xl);
+    line-height: 0.9;
+    letter-spacing: -0.05em;
+  }
+  .t-display-l {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--fs-display-l);
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+  }
+  .t-h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--fs-h2);
+    line-height: 1;
+    letter-spacing: -0.045em;
+  }
+  .t-h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--fs-h3);
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+  }
+  .t-pill-xl {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: var(--fs-pill-xl);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    text-transform: uppercase;
+  }
+  .t-label-caps {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--fs-label-caps);
+    line-height: 1.2;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .t-label-year {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--fs-label-caps);
+    line-height: 1.2;
+    letter-spacing: 0.12em;
+    font-variant-numeric: tabular-nums;
+  }
+  .t-lead {
+    font-size: var(--fs-lead);
+    line-height: 1.7;
+  }
+  .t-body { font-size: 1rem; line-height: 1.75; }
+  @media (min-width: 1024px) { .t-body { font-size: 1.0625rem; } }
+  .t-meta { font-size: 0.875rem; line-height: 1.5; }
+  @media (min-width: 1024px) { .t-meta { font-size: 0.9375rem; } }
+  .t-index {
+    font-weight: 300;
+    font-size: var(--fs-index);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .t-card-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.125rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+  @media (min-width: 1024px) { .t-card-title { font-size: 1.25rem; } }
+
+  /* PRD §5.3 — body line length 60–65 characters max */
+  .measure { max-width: 62ch; }
+  .measure-tight { max-width: 65ch; }
+
+  /* ============================================================
+     PRD §5.6 Core UI components
+     ============================================================ */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--color-signal);
+    color: var(--color-ink);
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 14px 28px;
+    border-radius: var(--radius-pill);
+    transition: background-color 180ms ease-out, color 180ms ease-out;
+  }
+  .btn-primary:hover { background: var(--color-ember); color: var(--color-cream); }
+
+  .btn-outline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 2px solid var(--color-signal);
+    color: var(--color-ink);
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 12px 26px;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    transition: background-color 180ms ease-out;
+  }
+  .btn-outline:hover { background: var(--color-signal-tint); }
+  .btn-outline:active { background: var(--color-signal); }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    border: 2px solid var(--color-signal);
+    color: var(--color-ink);
+    font-size: 15px;
+    font-weight: 500;
+    padding: 8px 18px;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    white-space: nowrap;
+    transition: background-color 180ms ease-out;
+  }
+  .chip:hover { background: var(--color-signal-tint); }
+  .chip[aria-pressed="true"] { background: var(--color-signal); color: var(--color-ink); }
+
+  .text-link {
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-decoration-color: var(--color-signal);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+    transition: color 180ms ease-out;
+  }
+  .text-link:hover { color: var(--color-ember); }
+
+  .pill-outline {
+    border: var(--stroke-brand) solid var(--color-signal);
+    border-radius: var(--radius-pill);
+  }
+
+  /* PRD §5.4 — frameless portrait, soft shadow to its left (max ~5% darker) */
+  .portrait-shadow { filter: drop-shadow(-18px 12px 28px rgb(19 24 43 / 0.05)); }
+
+  /* ============================================================
+     PRD §5.7 Motion — one orchestrated moment on page load
+     ============================================================ */
+  @keyframes rise-in {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes write-on {
+    from { clip-path: inset(0 100% 0 0); }
+    to { clip-path: inset(0 -2% 0 0); }
+  }
+
+  .anim-name {
+    animation: rise-in 700ms cubic-bezier(0.22, 1, 0.36, 1) 300ms both;
+  }
+  .anim-greeting {
+    animation: write-on 900ms cubic-bezier(0.65, 0, 0.35, 1) 150ms both;
+  }
+  .anim-portrait {
+    animation: fade-in 600ms ease-out both;
+  }
+  .mask-clip { overflow: hidden; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .anim-name, .anim-greeting, .anim-portrait {
+      animation: none !important;
+    }
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+
+  /* Card media hover — pointer devices only (PRD §5.7) */
+  @media (hover: hover) and (pointer: fine) {
+    .card-media-frame { overflow: hidden; }
+    .card-media-frame img,
+    .card-media-frame .card-media-inner {
+      transition: transform 400ms ease-out;
+    }
+    .group\/card:hover .card-media-frame img,
+    .group\/card:hover .card-media-frame .card-media-inner {
+      transform: scale(1.02);
+    }
+    .group\/card:hover .card-title-underline {
+      text-decoration: underline;
+      text-decoration-color: var(--color-signal);
+      text-decoration-thickness: 2px;
+      text-underline-offset: 4px;
+    }
+  }
+
+  /* ============================================================
+     Rich text (bio + project story) — PRD PROJ-04
+     ============================================================ */
+  .rich-text > * + * { margin-top: 1.1em; }
+  .rich-text strong { color: var(--color-ink); font-weight: 600; }
+  .rich-text em { font-style: italic; }
+  .rich-text a {
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-decoration-color: var(--color-signal);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+  .rich-text a:hover { color: var(--color-ember); }
+  .rich-text h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.5rem;
+    line-height: 1.2;
+    letter-spacing: -0.03em;
+    color: var(--color-ink);
+    margin-top: 2em;
+  }
+  .rich-text ul, .rich-text ol { padding-left: 1.25em; }
+  .rich-text ul { list-style: disc; }
+  .rich-text ol { list-style: decimal; }
+  .rich-text li + li { margin-top: 0.4em; }
+  .rich-text li::marker { color: var(--color-signal); }
+  .rich-text blockquote {
+    border-left: 3px solid var(--color-signal);
+    padding-left: 1.25em;
+    color: var(--color-ink);
+    font-size: 1.125em;
+  }
+
+  /* PRD §7.4 — tool icons are 48–56px at full width and shrink with the
+     container so the pill keeps to a single row instead of overflowing. */
+  .tool-icon {
+    width: clamp(2.25rem, 4.2cqi, 3.5rem);
+    height: clamp(2.25rem, 4.2cqi, 3.5rem);
+  }
+
+  /* ==========================================================
+     Dashboard. Quiet, consistent, and unmistakably the same
+     studio as the site — the accent appears only on the primary
+     action, the active nav rail and the focus ring.
+     ========================================================== */
+
+  /* Height of the mobile tab bar, so sticky bars sit on top of it
+     instead of guessing a pixel value. */
+  :root { --tabbar-h: 0px; }
+  @media (max-width: 1023px) { :root { --tabbar-h: 56px; } }
+
+  .adm-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  .adm-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.125rem 1.25rem;
+    border-bottom: 1px solid var(--color-line);
+  }
+  @media (min-width: 1024px) { .adm-card-head { padding: 1.25rem 1.5rem; } }
+
+  .adm-card-body { padding: 1.25rem; }
+  @media (min-width: 1024px) { .adm-card-body { padding: 1.5rem; } }
+
+  .adm-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+    color: var(--color-ink);
+  }
+
+  .adm-page-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.5rem, 1.2rem + 1.2vw, 1.875rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--color-ink);
+  }
+
+  .adm-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  .adm-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--color-ink);
+  }
+
+  /* The hint sits on its own line under the label, so a long hint can
+     never collide with the character counter on a narrow screen. */
+  .adm-hint {
+    display: block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--color-muted);
+  }
+
+  .adm-input {
+    width: 100%;
+    background: var(--color-panel);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-admin);
+    padding: 0.5625rem 0.75rem;
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--color-ink);
+    transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
+  }
+  .adm-input::placeholder { color: #9a9186; }
+  .adm-input:hover:not(:disabled) { border-color: #b9b0a1; }
+  .adm-input:focus {
+    outline: none;
+    border-color: var(--color-signal);
+    box-shadow: 0 0 0 3px rgb(246 81 23 / 0.16);
+  }
+  .adm-input:disabled { background: var(--color-surface); color: var(--color-muted); }
+
+  select.adm-input {
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2313182B' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M4 6.5 8 10.5l4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 16px;
+  }
+
+  /* Field widths by content, so a four-digit year never gets a 60ch box. */
+  .adm-w-xs { max-width: 9rem; }
+  .adm-w-sm { max-width: 16rem; }
+  .adm-w-md { max-width: 26rem; }
+
+  .adm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+    border-radius: var(--radius-admin);
+    padding: 0.5625rem 1rem;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+  }
+  .adm-btn-primary { background: var(--color-signal); color: var(--color-ink); }
+  .adm-btn-primary:hover:not(:disabled) { background: var(--color-ember); color: var(--color-cream); }
+  .adm-btn-secondary {
+    background: var(--color-panel);
+    border: 1px solid var(--color-line-strong);
+    color: var(--color-ink);
+  }
+  .adm-btn-secondary:hover:not(:disabled) { background: var(--color-surface); }
+  .adm-btn-ghost { color: var(--color-ink); }
+  .adm-btn-ghost:hover:not(:disabled) { background: var(--color-surface); }
+  .adm-btn-danger { border: 1px solid var(--color-ember); color: var(--color-ember); }
+  .adm-btn-danger:hover:not(:disabled) { background: rgb(187 54 7 / 0.06); }
+  .adm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .adm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-pill);
+    padding: 0.3125rem 0.75rem;
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--color-ink);
+    background: var(--color-panel);
+    cursor: pointer;
+    transition: background-color 140ms ease-out, border-color 140ms ease-out;
+  }
+  .adm-chip:hover { background: var(--color-surface); }
+  .adm-chip:has(:checked),
+  .adm-chip[aria-pressed="true"] {
+    background: var(--color-signal);
+    border-color: var(--color-signal);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .adm-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-line-strong);
+    padding: 0.125rem 0.5rem;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+  .adm-badge[data-tone="live"] { border-color: var(--color-signal); color: var(--color-ink); }
+
+  /* Sticky action bar — clears the mobile tab bar without a magic number. */
+  .adm-actionbar {
+    position: sticky;
+    bottom: var(--tabbar-h);
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    border-top: 1px solid var(--color-line);
+    background: color-mix(in srgb, var(--color-cream) 94%, transparent);
+    backdrop-filter: blur(8px);
+    padding: 0.75rem 0;
+  }
+
+  .adm-link {
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-decoration-color: var(--color-signal);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+  .adm-link:hover { color: var(--color-ember); }
+
+  /* Utility: hide scrollbars on the mobile filter rail */
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+}
