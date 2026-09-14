@@ -10,9 +10,16 @@ import { getMedia } from "@/lib/repo/media";
 import { getSettings } from "@/lib/repo/content";
 import { pad2 } from "@/lib/format";
 
-export function generateStaticParams() {
-  const { items } = listProjects({ status: "published" });
-  return items.map((p) => ({ slug: p.slug }));
+export async function generateStaticParams() {
+  // Pre-rendering project pages is an optimisation, not a requirement: any slug
+  // not listed here still renders on demand. Failing soft means a momentary
+  // database hiccup during a deploy cannot break the whole build.
+  try {
+    const { items } = await listProjects({ status: "published" });
+    return items.map((p) => ({ slug: p.slug }));
+  } catch {
+    return [];
+  }
 }
 
 export async function generateMetadata({
@@ -21,14 +28,14 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const project = getProjectBySlug(slug, { publishedOnly: true });
+  const project = await getProjectBySlug(slug, { publishedOnly: true });
   if (!project) return { title: "Not found" };
 
-  const settings = getSettings();
+  const settings = await getSettings();
   const title = project.seoTitle || project.title;
   const description =
     project.seoDescription || project.summary || toPlainText(project.body, 160) || settings.metaDescription;
-  const share = getMedia(project.ogImageId) ?? project.cover;
+  const share = await getMedia(project.ogImageId) ?? project.cover;
   const image = share?.storagePath ?? share?.originalUrl;
 
   return {
@@ -45,11 +52,11 @@ export async function generateMetadata({
 export default async function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   // PROJ-01 — draft and archived projects return 404.
-  const project = getProjectBySlug(slug, { publishedOnly: true });
+  const project = await getProjectBySlug(slug, { publishedOnly: true });
   if (!project) notFound();
 
-  const settings = getSettings();
-  const { next } = projectNeighbours(slug);
+  const settings = await getSettings();
+  const { next } = await projectNeighbours(slug);
   const cover = project.cover;
   const coverIsVideo = cover?.source === "youtube";
 

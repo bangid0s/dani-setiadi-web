@@ -6,9 +6,9 @@ import { availabilityHref } from "@/lib/site-data";
 import { whatsappUrl, mailtoUrl } from "@/lib/format";
 import type { HeroContent } from "@/lib/types";
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
-  const settings = getSettings();
-  const sections = listSections({ visibleOnly: true });
+export default async function SiteLayout({ children }: { children: React.ReactNode }) {
+  const settings = await getSettings();
+  const sections = await listSections({ visibleOnly: true });
   const hero = sections.find((s) => s.key === "hero");
   const wordmark = hero ? (hero.content as HeroContent).displayName : "Dani Setiadi";
 

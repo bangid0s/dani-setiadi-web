@@ -5,8 +5,8 @@ import { Field, Toggle, Select, Card, FieldRow } from "@/components/admin/form";
 import { contactSection } from "@/lib/repo/content";
 import { LIMITS } from "@/lib/validation";
 
-export default function ContactAdminPage() {
-  const section = contactSection();
+export default async function ContactAdminPage() {
+  const section = await contactSection();
   const c = section?.content;
   if (!c) return <p>Contact chapter is missing. Run the seed script.</p>;
 

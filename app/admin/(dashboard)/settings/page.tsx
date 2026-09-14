@@ -12,8 +12,8 @@ export default async function SettingsPage() {
         description="Contact details, availability, search listing, wording and account access."
       />
       <SettingsForms
-        settings={getSettings()}
-        admins={listAdmins()}
+        settings={await getSettings()}
+        admins={await listAdmins()}
         currentUserId={me?.userId ?? ""}
       />
     </>

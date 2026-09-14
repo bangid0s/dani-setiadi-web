@@ -14,33 +14,37 @@ word, image and video on the site can be changed without a developer.
 
 ## Quick start
 
+You need a Supabase project first — **[DEPLOY.md](DEPLOY.md) walks through it
+step by step**, including going live on Vercel.
+
 ```bash
 npm install
-npm run db:seed
+cp .env.example .env.local     # then fill in your Supabase values
+npm run db:setup               # creates the schema and seeds content
 npm run dev
 ```
 
 Open <http://localhost:3000>, and the dashboard at <http://localhost:3000/admin>.
 
-The seed prints the first sign-in. Change that password immediately — either in
-**Settings → Account**, or from the command line:
+`db:setup` prints a generated admin password on first run. Change it after
+signing in (Settings → Account), or from the command line:
 
 ```bash
 npm run admin:password -- you@example.com "a long new password"
 ```
 
-### Optional sample content
-
-Useful for seeing the layouts before real work is loaded:
+### Bringing across content from the old SQLite build
 
 ```bash
-node scripts/demo-content.mjs      # 10 sample projects in mixed ratios + one YouTube item
-node scripts/demo-portrait.mjs     # a placeholder hero portrait
+npm run db:migrate-from-sqlite -- --dry   # report what would move
+npm run db:migrate-from-sqlite            # move rows and files to Supabase
 ```
 
-Both take `--clear` to remove what they added.
+### Working without a Supabase project
 
----
+`scripts/dev/` contains a throwaway Postgres (PGlite over the real wire
+protocol) so you can run the whole app offline — see
+[scripts/dev/README.md](scripts/dev/README.md).
 
 ## Scripts
 
@@ -62,40 +66,33 @@ Both take `--clear` to remove what they added.
 |---|---|
 | Framework | Next.js (App Router, TypeScript) |
 | Styling | Tailwind CSS v4, brand tokens via `@theme` (PRD §5.10) |
-| Data | SQLite via `better-sqlite3` (`data/content.db`) |
-| Files | `public/uploads` (media) and `public/files` (CV) |
+| Database | Supabase Postgres, via the `postgres` driver over the transaction pooler |
+| Files | Supabase Storage — `media` and `files` buckets |
 | Images | `sharp` — downscaling, blur placeholders, dominant colour |
 | Validation | Zod schemas shared by client and server |
 | Auth | scrypt password hashes + httpOnly session cookies |
+| Hosting | Vercel |
 
-### One deliberate deviation from the PRD
+### Two deliberate departures from the PRD
 
-**PRD §11.1 specifies Supabase + Vercel. This build uses SQLite and the local filesystem.**
-The reason is practical: a Supabase project cannot be provisioned from here, and a build that
-fails on missing environment variables delivers nothing you can run today.
-
-What that means for you:
-
-- Everything works immediately with `npm install && npm run db:seed && npm run dev` — no
-  accounts, no keys.
-- The schema in [`lib/db/schema.sql`](lib/db/schema.sql) matches PRD §10.1 table for table and
-  column for column, and all data access sits behind a thin repository layer
-  ([`lib/repo/`](lib/repo/)). Moving to Supabase is a driver swap, not a rewrite.
-- **Deploy on a host with a persistent disk** — a VPS, Fly.io, Render, Railway, Coolify or
-  Docker. Vercel's filesystem is ephemeral, so uploads and the database would not survive a
-  deploy there. If Vercel is a hard requirement, migrate the repository layer to Supabase
-  (Postgres + Storage) first; the RLS policy table in PRD §10.3 still applies.
-- Back up `data/content.db` and `public/uploads` together — they are the whole site.
-
-Other deviations, both to avoid dependencies outside PRD §11.1:
+Both were taken to avoid dependencies outside PRD §11.1:
 
 - Rich text is a small **Markdown subset** rendered straight to React elements
-  ([`lib/richtext.tsx`](lib/richtext.tsx)) rather than Tiptap. Nothing is ever passed through
-  `dangerouslySetInnerHTML`, so markup cannot be injected.
-- Reordering uses **Move up / Move down** buttons rather than dnd-kit. PRD §9.2 allows this
-  explicitly, and it works with touch and the keyboard out of the box.
+  ([`lib/richtext.tsx`](lib/richtext.tsx)) rather than Tiptap. Nothing is ever
+  passed through `dangerouslySetInnerHTML`, so markup cannot be injected.
+- Reordering uses **Move up / Move down** buttons rather than dnd-kit. PRD §9.2
+  allows this explicitly, and it works with touch and the keyboard out of the box.
 
----
+### How access control works
+
+Every query runs on the server — server components, server actions and route
+handlers — over a privileged Postgres connection, and the app owns its own admin
+sessions. Row-level security is still enabled on **every** table
+([`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql)) so
+that a leaked anon key could only ever read what a visitor already sees on the
+public site, and could never write. `private_settings`, `messages`,
+`admin_users`, `sessions` and `login_attempts` have no policy at all, so they are
+unreadable to anyone but the server.
 
 ## Project structure
 
@@ -111,26 +108,32 @@ components/
   admin/                  dashboard forms and managers
   media/                  MediaField (upload / link / YouTube) + renderers
 lib/
-  db/schema.sql           the database, mirroring PRD §10.1
+  db/                     the Postgres pool
+  storage.ts              Supabase Storage upload / delete
   repo/                   all data access
   media/                  youtube.ts, import-url.ts, process.ts, src.ts
   masonry.ts              PRD §7.3.6 layout
   validation.ts           Zod schemas + the §9.5 content guardrails
+supabase/migrations/      the schema and the storage buckets
+scripts/                  setup, migration and password tools
 docs/ADMIN-GUIDE.md       the one-page guide for Dani
+DEPLOY.md                 going live on GitHub + Supabase + Vercel
 ```
 
 ---
 
 ## Environment variables
 
-None are required to run. For production set:
+Copy `.env.example` to `.env.local`. All four are required:
 
 ```bash
-NEXT_PUBLIC_SITE_URL=https://your-domain.com   # canonical URLs, sitemap, share cards
-DATA_DIR=/var/lib/dani/data                    # optional: move the database off the repo
+DATABASE_URL=                 # Supabase → Database → Transaction pooler (port 6543)
+NEXT_PUBLIC_SUPABASE_URL=     # Supabase → API → Project URL
+SUPABASE_SERVICE_ROLE_KEY=    # Supabase → API → service_role (server-only, never commit)
+NEXT_PUBLIC_SITE_URL=         # your public address, no trailing slash
 ```
 
----
+Set the same four in Vercel → Project → Settings → Environment Variables.
 
 ## Security notes
 
@@ -145,3 +148,5 @@ DATA_DIR=/var/lib/dani/data                    # optional: move the database off
   response must be `image/*`.
 - YouTube loads nothing until a visitor clicks: cards show a thumbnail imported into your own
   storage, and the player uses `youtube-nocookie.com`.
+- The service-role key is read only in server code and is never exposed to the browser.
+  Row-level security is on for every table as a second line of defence.

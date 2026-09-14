@@ -5,8 +5,8 @@ import { getSettings } from "@/lib/repo/content";
  * PRD §7.7 — the script "Oops," over a huge "404" in Signal.
  * Rendered inside the root layout, so it carries no html/body of its own.
  */
-export default function NotFound() {
-  const labels = getSettings().uiLabels;
+export default async function NotFound() {
+  const labels = (await getSettings()).uiLabels;
 
   return (
     <div className="page">

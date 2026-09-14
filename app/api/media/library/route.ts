@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   }
   const url = new URL(request.url);
   const source = url.searchParams.get("source") as "upload" | "url" | "youtube" | "all" | null;
-  const { items, total } = listMedia({
+  const { items, total } = await listMedia({
     source: source ?? "all",
     search: url.searchParams.get("q") ?? undefined,
     limit: Number(url.searchParams.get("limit") ?? 48),

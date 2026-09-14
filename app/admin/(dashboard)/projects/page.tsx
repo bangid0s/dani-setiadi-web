@@ -16,7 +16,7 @@ export default async function ProjectsPage({
     ? (sp.status as ProjectStatus)
     : "all";
 
-  const { items } = listProjects({
+  const { items } = await listProjects({
     status,
     categorySlug: sp.category ?? null,
     search: sp.q,
@@ -32,12 +32,12 @@ export default async function ProjectsPage({
       <div className="space-y-6">
         <ProjectsTable
           projects={items}
-          categories={listCategories()}
+          categories={await listCategories()}
           activeStatus={status}
           activeCategory={sp.category ?? ""}
           query={sp.q ?? ""}
         />
-        <BulkUpload categories={listCategories()} />
+        <BulkUpload categories={await listCategories()} />
       </div>
     </>
   );

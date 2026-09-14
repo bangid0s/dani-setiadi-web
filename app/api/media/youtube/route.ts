@@ -4,7 +4,8 @@ import {
   parseYouTubeUrl, fetchYouTubeOEmbed, youTubeThumbnailCandidates,
 } from "@/lib/media/youtube";
 import { fetchRemoteImage } from "@/lib/media/import-url";
-import { detectType, processImage, storeFile } from "@/lib/media/process";
+import { detectType, processImage } from "@/lib/media/process";
+import { uploadObject, newObjectPath, MEDIA_BUCKET } from "@/lib/storage";
 import { insertMedia } from "@/lib/repo/media";
 import sharp from "sharp";
 
@@ -62,7 +63,9 @@ export async function POST(request: Request) {
         }
       }
       const processed = await processImage(bytes, detected);
-      storagePath = await storeFile(processed.buffer, processed.mime);
+      storagePath = await uploadObject(
+        MEDIA_BUCKET, newObjectPath(processed.mime), processed.buffer, processed.mime,
+      );
       lqip = processed.lqip;
       break;
     } catch {
@@ -70,7 +73,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const media = insertMedia({
+  const media = await insertMedia({
     source: "youtube",
     originalUrl: raw,
     storagePath,

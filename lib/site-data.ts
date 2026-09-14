@@ -6,7 +6,7 @@ import type { GalleryItem } from "@/components/site/gallery-types";
 import type { Project } from "@/lib/types";
 
 /** Flattens a project into the shape the gallery and lightbox need. */
-export function toGalleryItem(p: Project): GalleryItem {
+export async function toGalleryItem(p: Project): Promise<GalleryItem> {
   const media = p.cover;
   const ratio = media
     ? cardRatio(p.cardRatio, media.width, media.height)
@@ -26,25 +26,27 @@ export function toGalleryItem(p: Project): GalleryItem {
     // A project earns its own page once it has a story, extra media or links.
     hasPage: Boolean(p.body?.trim()) || p.gallery.length > 0 || p.links.length > 0,
     media,
-    poster: media?.posterMediaId ? getMedia(media.posterMediaId) : null,
+    poster: media?.posterMediaId ? await getMedia(media.posterMediaId) : null,
     summary: p.summary,
   };
 }
+
+export const toGalleryItems = (projects: Project[]) => Promise.all(projects.map(toGalleryItem));
 
 /**
  * The published gallery, honouring the "include featured in the gallery too"
  * setting (PRD §7.3.2).
  */
-export function galleryProjects(includeFeatured: boolean): Project[] {
-  const { items } = listProjects({
+export async function galleryProjects(includeFeatured: boolean): Promise<Project[]> {
+  const { items } = await listProjects({
     status: "published",
     excludeFeatured: !includeFeatured,
   });
   return items;
 }
 
-export function featuredProjects(): Project[] {
-  const { items } = listProjects({ status: "published", featuredOnly: true, limit: 3 });
+export async function featuredProjects(): Promise<Project[]> {
+  const { items } = await listProjects({ status: "published", featuredOnly: true, limit: 3 });
   return items;
 }
 

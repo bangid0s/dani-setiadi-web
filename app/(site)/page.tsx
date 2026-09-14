@@ -9,15 +9,15 @@ import {
   listSections, getSettings, listTools, listExperiences, listActiveCategories,
 } from "@/lib/repo/content";
 import { getMedia } from "@/lib/repo/media";
-import { galleryProjects, featuredProjects, toGalleryItem, availabilityHref } from "@/lib/site-data";
+import { galleryProjects, featuredProjects, toGalleryItems, availabilityHref } from "@/lib/site-data";
 import { whatsappUrl, mailtoUrl } from "@/lib/format";
 import type {
   AboutContent, ContactContent, HeroContent, Section, WorkContent,
 } from "@/lib/types";
 
-export function generateMetadata(): Metadata {
-  const settings = getSettings();
-  const hero = listSections().find((s) => s.key === "hero")?.content as HeroContent | undefined;
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
+  const hero = (await listSections()).find((s) => s.key === "hero")?.content as HeroContent | undefined;
   const name = hero?.displayName ?? "Dani Setiadi";
   const title = `${name} — ${hero?.roleLine ?? "Graphic Designer & Illustrator"}`;
   const ogImage = settings.ogImage?.storagePath ?? settings.ogImage?.originalUrl;
@@ -40,19 +40,19 @@ export function generateMetadata(): Metadata {
   };
 }
 
-export default function HomePage() {
-  const settings = getSettings();
-  const sections = listSections({ visibleOnly: true });
+export default async function HomePage() {
+  const settings = await getSettings();
+  const sections = await listSections({ visibleOnly: true });
 
   const hero = sections.find((s) => s.key === "hero") as Section<HeroContent> | undefined;
   const work = sections.find((s) => s.key === "work") as Section<WorkContent> | undefined;
   const about = sections.find((s) => s.key === "about") as Section<AboutContent> | undefined;
   const contact = sections.find((s) => s.key === "contact") as Section<ContactContent> | undefined;
 
-  const featured = work?.content.showFeatured ? featuredProjects() : [];
-  const gallery = galleryProjects(settings.gallery.includeFeatured);
-  const items = gallery.map(toGalleryItem);
-  const categories = listActiveCategories();
+  const featured = work?.content.showFeatured ? await featuredProjects() : [];
+  const gallery = await galleryProjects(settings.gallery.includeFeatured);
+  const items = await toGalleryItems(gallery);
+  const categories = await listActiveCategories();
 
   const wa = whatsappUrl(settings.whatsappE164, settings.whatsappMessage);
   const mail = mailtoUrl(settings.contactEmail);
@@ -66,7 +66,7 @@ export default function HomePage() {
     jobTitle: hero?.content.roleLine ?? "Graphic Designer & Illustrator",
     address: { "@type": "PostalAddress", addressLocality: "Semarang", addressCountry: "ID" },
     image: hero?.content.portraitId
-      ? (getMedia(hero.content.portraitId)?.storagePath ?? undefined)
+      ? ((await getMedia(hero.content.portraitId))?.storagePath ?? undefined)
       : undefined,
     email: settings.contactEmail || undefined,
     sameAs: settings.socialLinks.map((s) => s.url),
@@ -74,15 +74,15 @@ export default function HomePage() {
 
   // GLB-01 — chapters render in the admin-defined order; hidden ones are not
   // rendered at all.
-  const chapters = sections.map((section) => {
+  const chapters = await Promise.all(sections.map(async (section) => {
     switch (section.key) {
       case "hero":
         return (
           <Hero
             key="hero"
             section={section as Section<HeroContent>}
-            portrait={getMedia((section.content as HeroContent).portraitId)}
-            greetingSvg={getMedia((section.content as HeroContent).greetingSvgId)}
+            portrait={await getMedia((section.content as HeroContent).portraitId)}
+            greetingSvg={await getMedia((section.content as HeroContent).greetingSvgId)}
           />
         );
       case "work": {
@@ -128,8 +128,8 @@ export default function HomePage() {
           <About
             key="about"
             section={section as Section<AboutContent>}
-            tools={listTools({ visibleOnly: true })}
-            experiences={listExperiences({ visibleOnly: true })}
+            tools={await listTools({ visibleOnly: true })}
+            experiences={await listExperiences({ visibleOnly: true })}
             settings={settings}
             availabilityHref={availHref}
           />
@@ -139,7 +139,7 @@ export default function HomePage() {
       default:
         return null;
     }
-  });
+  }));
 
   return (
     <>

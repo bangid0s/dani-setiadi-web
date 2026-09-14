@@ -8,13 +8,13 @@
     "start": "next start",
     "lint": "eslint app components lib",
     "typecheck": "tsc --noEmit",
-    "db:seed": "node scripts/seed.mjs",
-    "db:reset": "node scripts/seed.mjs --force",
-    "admin:password": "node scripts/set-password.mjs"
+    "admin:password": "node scripts/set-password.mjs",
+    "db:setup": "node scripts/setup.mjs",
+    "db:migrate-from-sqlite": "node scripts/migrate-from-sqlite.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
     "next": "^16.3.5",
+    "postgres": "^3.4.9",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
@@ -22,12 +22,15 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "@eslint/eslintrc": "^3.3.7",
     "@tailwindcss/postcss": "^4.0.0",
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "better-sqlite3": "^12.11.1",
     "eslint": "^9.18.0",
     "eslint-config-next": "^16.3.5",
     "tailwindcss": "^4.0.0",

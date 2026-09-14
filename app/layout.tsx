@@ -3,8 +3,8 @@ import { fontVariables } from "@/lib/fonts";
 import { getSettings } from "@/lib/repo/content";
 import "./globals.css";
 
-export function generateMetadata(): Metadata {
-  const settings = getSettings();
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
   const favicon = settings.favicon?.storagePath ?? settings.favicon?.originalUrl;
   return {
     metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -19,7 +19,7 @@ export function generateMetadata(): Metadata {
   };
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={fontVariables}>
       <body>{children}</body>

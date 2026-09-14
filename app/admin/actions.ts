@@ -22,12 +22,20 @@ import {
   setProjectLinks, publishBlockers,
 } from "@/lib/repo/projects";
 import { updateMediaMeta, softDeleteMedia, getMedia } from "@/lib/repo/media";
-import { deleteStoredFile } from "@/lib/media/process";
+import { deleteObject, MEDIA_BUCKET, FILES_BUCKET } from "@/lib/storage";
 import type { SectionKey } from "@/lib/types";
 
 export type ActionState = { error: string | null; success?: string | null };
 const ok = (success: string): ActionState => ({ error: null, success });
 const fail = (error: string): ActionState => ({ error, success: null });
+
+/** The CV is stored as a full public URL; deletes need the object path back. */
+function objectPathFromUrl(url: string | null): string | null {
+  if (!url) return null;
+  const marker = `/storage/v1/object/public/${FILES_BUCKET}/`;
+  const i = url.indexOf(marker);
+  return i === -1 ? null : decodeURI(url.slice(i + marker.length));
+}
 
 /** Every admin write refreshes the public cache (PRD §10.3 / §11.2). */
 function revalidateSite() {
@@ -60,7 +68,7 @@ export async function saveSectionAction(
   const schema = sectionSchemas[key];
   if (!schema) return fail("Unknown chapter.");
 
-  const existing = getSection(key)?.content as Record<string, unknown> | undefined;
+  const existing = (await getSection(key))?.content as Record<string, unknown> | undefined;
   const raw: Record<string, unknown> = { ...existing };
 
   for (const [field, value] of formData.entries()) {
@@ -87,9 +95,9 @@ export async function saveSectionAction(
   const parsed = schema.safeParse(raw);
   if (!parsed.success) return fail(firstIssue(parsed.error));
 
-  updateSectionContent(key, parsed.data);
+  await updateSectionContent(key, parsed.data);
   if (formData.has("__label")) {
-    updateSectionMeta(key, { label: str(formData, "__label").slice(0, 32) });
+    await updateSectionMeta(key, { label: str(formData, "__label").slice(0, 32) });
   }
   revalidateSite();
   return ok("Changes published.");
@@ -97,9 +105,9 @@ export async function saveSectionAction(
 
 export async function saveSectionsOrderAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  reorderSections(list(formData, "key"));
+  await reorderSections(list(formData, "key"));
   for (const key of list(formData, "key")) {
-    updateSectionMeta(key as SectionKey, {
+    await updateSectionMeta(key as SectionKey, {
       label: String(formData.get(`label-${key}`) ?? "").slice(0, 32) || key,
       isVisible: formData.getAll(`visible-${key}`).includes("1"),
     });
@@ -125,8 +133,8 @@ export async function saveSiteSettingsAction(
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
 
-  const current = getSettings();
-  updateSettings({
+  const current = await getSettings();
+  await updateSettings({
     ...parsed.data,
     ogImageId: formData.has("ogImageId") ? str(formData, "ogImageId") || null : undefined,
     faviconId: formData.has("faviconId") ? str(formData, "faviconId") || null : undefined,
@@ -149,7 +157,7 @@ export async function saveAvailabilityAction(
     hideWhenClosed: bool(formData, "hideWhenClosed"),
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
-  updateSettings({ availability: parsed.data });
+  await updateSettings({ availability: parsed.data });
   revalidateSite();
   return ok("Availability updated.");
 }
@@ -174,7 +182,7 @@ export async function saveDisplaySettingsAction(
     defaultOpenAs: str(formData, "defaultOpenAs"),
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
-  updateSettings({ gallery: parsed.data });
+  await updateSettings({ gallery: parsed.data });
   revalidateSite();
   return ok("Display settings saved.");
 }
@@ -189,8 +197,8 @@ export async function saveUiLabelsAction(
   raw.showFooterCredit = bool(formData, "showFooterCredit");
   const parsed = uiLabelsSchema.safeParse(raw);
   if (!parsed.success) return fail(firstIssue(parsed.error));
-  const current = getSettings();
-  updateSettings({
+  const current = await getSettings();
+  await updateSettings({
     uiLabels: { ...parsed.data, showFloatingWhatsApp: current.showFloatingWhatsApp },
   });
   revalidateSite();
@@ -218,7 +226,7 @@ export async function saveSocialLinksAction(
     if (!parsed.success) return fail(`${platforms[i]}: ${firstIssue(parsed.error)}`);
     links.push(parsed.data);
   }
-  updateSettings({ socialLinks: links });
+  await updateSettings({ socialLinks: links });
   revalidateSite();
   return ok("Social links saved.");
 }
@@ -227,15 +235,17 @@ export async function setCvAction(_prev: ActionState, formData: FormData): Promi
   await requireAdmin();
   const path = str(formData, "cvPath");
   const filename = str(formData, "cvFilename");
-  const current = getSettings();
+  const current = await getSettings();
   if (!path) {
-    if (current.cvPath) await deleteStoredFile(current.cvPath);
-    updateSettings({ cvPath: null, cvFilename: null });
+    if (current.cvPath) await deleteObject(FILES_BUCKET, objectPathFromUrl(current.cvPath));
+    await updateSettings({ cvPath: null, cvFilename: null });
     revalidateSite();
     return ok("CV removed.");
   }
-  if (current.cvPath && current.cvPath !== path) await deleteStoredFile(current.cvPath);
-  updateSettings({ cvPath: path, cvFilename: filename });
+  if (current.cvPath && current.cvPath !== path) {
+    await deleteObject(FILES_BUCKET, objectPathFromUrl(current.cvPath));
+  }
+  await updateSettings({ cvPath: path, cvFilename: filename });
   revalidateSite();
   return ok("CV updated.");
 }
@@ -252,8 +262,8 @@ export async function saveToolAction(_prev: ActionState, formData: FormData): Pr
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const id = str(formData, "id");
-  if (id) updateTool(id, parsed.data);
-  else createTool(parsed.data);
+  if (id) await updateTool(id, parsed.data);
+  else await createTool(parsed.data);
   revalidateSite();
   revalidatePath("/admin/tools");
   return ok(id ? "Tool updated." : "Tool added.");
@@ -261,14 +271,14 @@ export async function saveToolAction(_prev: ActionState, formData: FormData): Pr
 
 export async function deleteToolAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  deleteTool(str(formData, "id"));
+  await deleteTool(str(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/tools");
 }
 
 export async function reorderToolsAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  reorderTools(list(formData, "id"));
+  await reorderTools(list(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/tools");
 }
@@ -294,8 +304,8 @@ export async function saveExperienceAction(
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const id = str(formData, "id");
-  if (id) updateExperience(id, parsed.data);
-  else createExperience(parsed.data);
+  if (id) await updateExperience(id, parsed.data);
+  else await createExperience(parsed.data);
   revalidateSite();
   revalidatePath("/admin/experience");
   return ok(id ? "Entry updated." : "Entry added.");
@@ -303,15 +313,15 @@ export async function saveExperienceAction(
 
 export async function deleteExperienceAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  deleteExperience(str(formData, "id"));
+  await deleteExperience(str(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/experience");
 }
 
 export async function reorderExperiencesAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  if (str(formData, "mode") === "auto") autoSortExperiences();
-  else reorderExperiences(list(formData, "id"));
+  if (str(formData, "mode") === "auto") await autoSortExperiences();
+  else await reorderExperiences(list(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/experience");
 }
@@ -329,8 +339,8 @@ export async function saveCategoryAction(
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
   const id = str(formData, "id");
-  if (id) updateCategory(id, parsed.data.name, parsed.data.isVisible);
-  else createCategory(parsed.data.name, parsed.data.isVisible);
+  if (id) await updateCategory(id, parsed.data.name, parsed.data.isVisible);
+  else await createCategory(parsed.data.name, parsed.data.isVisible);
   revalidateSite();
   revalidatePath("/admin/categories");
   return ok(id ? "Category updated." : "Category added.");
@@ -338,14 +348,14 @@ export async function saveCategoryAction(
 
 export async function deleteCategoryAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  deleteCategory(str(formData, "id"), str(formData, "moveTo") || null);
+  await deleteCategory(str(formData, "id"), str(formData, "moveTo") || null);
   revalidateSite();
   revalidatePath("/admin/categories");
 }
 
 export async function reorderCategoriesAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  reorderCategories(list(formData, "id"));
+  await reorderCategories(list(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/categories");
 }
@@ -382,28 +392,28 @@ export async function saveProjectAction(
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
 
-  const projectId = id || createProject({ ...parsed.data, status: "draft" });
+  const projectId = id || await createProject({ ...parsed.data, status: "draft" });
 
   // Links are saved before the publish check so nothing is lost on a block.
   const linkLabels = formData.getAll("linkLabel").map(String);
   const linkUrls = formData.getAll("linkUrl").map(String);
-  setProjectLinks(
+  await setProjectLinks(
     projectId,
     linkLabels.map((label, i) => ({ label, url: linkUrls[i] ?? "" })),
   );
 
   if (intent === "publish") {
     // §9.4 publish checklist — block with a specific message for each failure.
-    updateProject(projectId, { ...parsed.data, status: "draft" });
-    const project = getProjectById(projectId);
-    const blockers = project ? publishBlockers({ ...project, openAs: parsed.data.openAs, externalUrl: parsed.data.externalUrl ?? null }) : [];
+    await updateProject(projectId, { ...parsed.data, status: "draft" });
+    const project = await getProjectById(projectId);
+    const blockers = project ? await publishBlockers({ ...project, openAs: parsed.data.openAs, externalUrl: parsed.data.externalUrl ?? null }) : [];
     if (blockers.length > 0) {
       revalidatePath(`/admin/projects/${projectId}`);
       return { error: blockers.map((b) => b.message).join(" "), success: null };
     }
-    updateProject(projectId, { ...parsed.data, status: "published" });
+    await updateProject(projectId, { ...parsed.data, status: "published" });
   } else {
-    updateProject(projectId, parsed.data);
+    await updateProject(projectId, parsed.data);
   }
 
   revalidateSite();
@@ -414,7 +424,7 @@ export async function saveProjectAction(
 
 export async function createProjectAction(): Promise<void> {
   await requireAdmin();
-  const id = createProject({ title: "Untitled project", slug: slugify("untitled project") });
+  const id = await createProject({ title: "Untitled project", slug: slugify("untitled project") });
   revalidatePath("/admin/projects");
   redirect(`/admin/projects/${id}`);
 }
@@ -424,12 +434,12 @@ export async function bulkProjectAction(formData: FormData): Promise<void> {
   const ids = list(formData, "selected");
   const op = str(formData, "op");
   for (const id of ids) {
-    if (op === "publish") setProjectStatus(id, "published");
-    else if (op === "unpublish") setProjectStatus(id, "draft");
-    else if (op === "archive") setProjectStatus(id, "archived");
-    else if (op === "delete") softDeleteProject(id);
-    else if (op === "restore") restoreProject(id);
-    else if (op === "destroy") hardDeleteProject(id);
+    if (op === "publish") await setProjectStatus(id, "published");
+    else if (op === "unpublish") await setProjectStatus(id, "draft");
+    else if (op === "archive") await setProjectStatus(id, "archived");
+    else if (op === "delete") await softDeleteProject(id);
+    else if (op === "restore") await restoreProject(id);
+    else if (op === "destroy") await hardDeleteProject(id);
   }
   revalidateSite();
   revalidatePath("/admin/projects");
@@ -437,15 +447,15 @@ export async function bulkProjectAction(formData: FormData): Promise<void> {
 
 export async function toggleFeaturedAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  toggleFeatured(str(formData, "id"), str(formData, "featured") === "1");
+  await toggleFeatured(str(formData, "id"), str(formData, "featured") === "1");
   revalidateSite();
   revalidatePath("/admin/projects");
 }
 
 export async function reorderProjectsAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  if (str(formData, "scope") === "featured") reorderFeatured(list(formData, "id"));
-  else reorderProjects(list(formData, "id"));
+  if (str(formData, "scope") === "featured") await reorderFeatured(list(formData, "id"));
+  else await reorderProjects(list(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/projects");
 }
@@ -456,7 +466,7 @@ export async function addProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const projectId = str(formData, "projectId");
   for (const mediaId of list(formData, "mediaId")) {
-    addProjectMedia(projectId, mediaId, str(formData, "width") === "half" ? "half" : "full");
+    await addProjectMedia(projectId, mediaId, str(formData, "width") === "half" ? "half" : "full");
   }
   revalidateSite();
   revalidatePath(`/admin/projects/${projectId}`);
@@ -464,7 +474,7 @@ export async function addProjectMediaAction(formData: FormData): Promise<void> {
 
 export async function updateProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  updateProjectMedia(str(formData, "id"), {
+  await updateProjectMedia(str(formData, "id"), {
     width: str(formData, "width") === "half" ? "half" : "full",
     caption: str(formData, "caption"),
   });
@@ -474,14 +484,14 @@ export async function updateProjectMediaAction(formData: FormData): Promise<void
 
 export async function removeProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  removeProjectMedia(str(formData, "id"));
+  await removeProjectMedia(str(formData, "id"));
   revalidateSite();
   revalidatePath(`/admin/projects/${str(formData, "projectId")}`);
 }
 
 export async function reorderProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  reorderProjectMedia(list(formData, "id"));
+  await reorderProjectMedia(list(formData, "id"));
   revalidateSite();
   revalidatePath(`/admin/projects/${str(formData, "projectId")}`);
 }
@@ -501,7 +511,7 @@ export async function saveMediaMetaAction(
     title: str(formData, "title"),
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
-  updateMediaMeta(str(formData, "id"), parsed.data);
+  await updateMediaMeta(str(formData, "id"), parsed.data);
   revalidateSite();
   revalidatePath("/admin/media");
   return ok("Saved.");
@@ -510,9 +520,9 @@ export async function saveMediaMetaAction(
 export async function deleteMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const id = str(formData, "id");
-  const media = getMedia(id);
-  softDeleteMedia(id);
-  if (media?.storagePath) await deleteStoredFile(media.storagePath);
+  const media = await getMedia(id);
+  await softDeleteMedia(id);
+  if (media?.storagePath) await deleteObject(MEDIA_BUCKET, media.storagePath);
   revalidateSite();
   revalidatePath("/admin/media");
 }
@@ -541,7 +551,7 @@ export async function inviteAdminAction(
   const email = str(formData, "email").trim().toLowerCase();
   const password = str(formData, "password");
   if (!email.includes("@")) return fail("Enter a valid email address.");
-  if (findAdminByEmail(email)) return fail("That email already has access.");
+  if (await findAdminByEmail(email)) return fail("That email already has access.");
   const parsed = passwordSchema.safeParse(password);
   if (!parsed.success) return fail(firstIssue(parsed.error));
   await createAdmin(email, parsed.data, str(formData, "name"), "maintainer");
@@ -553,7 +563,7 @@ export async function removeAdminAction(formData: FormData): Promise<void> {
   const me = await requireAdmin();
   const userId = str(formData, "userId");
   // Never remove the last admin, and never let someone lock themselves out.
-  if (userId === me.userId || countAdmins() <= 1) return;
-  deleteAdmin(userId);
+  if (userId === me.userId || await countAdmins() <= 1) return;
+  await deleteAdmin(userId);
   revalidatePath("/admin/settings");
 }

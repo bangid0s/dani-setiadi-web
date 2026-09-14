@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { fetchRemoteImage, ImportError } from "@/lib/media/import-url";
-import { detectType, ACCEPTED_IMAGE_TYPES, processImage, storeFile } from "@/lib/media/process";
+import { detectType, ACCEPTED_IMAGE_TYPES, processImage } from "@/lib/media/process";
+import { uploadObject, newObjectPath, MEDIA_BUCKET } from "@/lib/storage";
 import { insertMedia } from "@/lib/repo/media";
 import { parseYouTubeUrl } from "@/lib/media/youtube";
 
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
 
     if (!saveCopy) {
       // Hotlinked: we keep the dimensions so layout is still shift-free.
-      const media = insertMedia({
+      const media = await insertMedia({
         source: "url",
         originalUrl: fetched.finalUrl,
         isHotlinked: true,
@@ -59,10 +60,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ media });
     }
 
-    const path = await storeFile(processed.buffer, processed.mime);
-    const media = insertMedia({
+    const objectPath = await uploadObject(
+      MEDIA_BUCKET, newObjectPath(processed.mime), processed.buffer, processed.mime,
+    );
+    const media = await insertMedia({
       source: "url",
-      storagePath: path,
+      storagePath: objectPath,
       originalUrl: fetched.finalUrl,
       isHotlinked: false,
       title: filenameFromUrl(fetched.finalUrl),

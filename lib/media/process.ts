@@ -1,15 +1,9 @@
 import sharp from "sharp";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { randomBytes } from "node:crypto";
 
 // PRD §8.3 — upload rules.
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 export const MAX_LONG_EDGE = 3200;
-
-export const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-export const FILES_DIR = path.join(process.cwd(), "public", "files");
 
 export type DetectedType =
   | "image/jpeg" | "image/png" | "image/webp" | "image/avif"
@@ -184,27 +178,4 @@ function readSvgSize(svg: string): { width: number; height: number } {
   const vb = open.match(/viewBox\s*=\s*["']\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)/i);
   if (vb) return { width: Math.round(Number(vb[1])), height: Math.round(Number(vb[2])) };
   return { width: 512, height: 512 };
-}
-
-/** Writes bytes under public/uploads and returns the public path. */
-export async function storeFile(
-  buffer: Buffer,
-  mime: string,
-  dir: string = UPLOAD_DIR,
-): Promise<string> {
-  await fs.mkdir(dir, { recursive: true });
-  const ext = EXTENSION[mime] ?? "bin";
-  const name = `${Date.now().toString(36)}-${randomBytes(6).toString("hex")}.${ext}`;
-  await fs.writeFile(path.join(dir, name), buffer);
-  const publicDir = dir === FILES_DIR ? "files" : "uploads";
-  return `/${publicDir}/${name}`;
-}
-
-export async function deleteStoredFile(publicPath: string | null): Promise<void> {
-  if (!publicPath?.startsWith("/uploads/") && !publicPath?.startsWith("/files/")) return;
-  const abs = path.join(process.cwd(), "public", publicPath.replace(/^\//, ""));
-  // Guard against traversal in a stored path.
-  const root = path.join(process.cwd(), "public");
-  if (!abs.startsWith(root + path.sep)) return;
-  await fs.unlink(abs).catch(() => {});
 }

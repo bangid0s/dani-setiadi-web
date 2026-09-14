@@ -22,20 +22,20 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   const key = email.toLowerCase();
 
   // ADM-04 — temporary lockout after repeated failures.
-  if (isRateLimited(key)) {
+  if (await isRateLimited(key)) {
     return { error: "Too many attempts. Wait 15 minutes and try again." };
   }
 
-  const user = findAdminByEmail(email);
+  const user = await findAdminByEmail(email);
   // ADM-02 — only allow-listed users get in. The message stays identical for an
   // unknown email and a wrong password, so it can't be used to probe accounts.
   const ok = user ? await verifyPassword(password, user.passwordHash) : false;
   if (!user || !ok) {
-    recordFailedAttempt(key);
+    await recordFailedAttempt(key);
     return { error: "That email and password don’t match." };
   }
 
-  clearAttempts(key);
+  await clearAttempts(key);
   await startSession(user.userId);
   redirect("/admin");
 }

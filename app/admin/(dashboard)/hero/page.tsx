@@ -6,8 +6,8 @@ import { heroSection } from "@/lib/repo/content";
 import { getMedia } from "@/lib/repo/media";
 import { LIMITS } from "@/lib/validation";
 
-export default function HeroAdminPage() {
-  const section = heroSection();
+export default async function HeroAdminPage() {
+  const section = await heroSection();
   const c = section?.content;
   if (!c) return <p>Hero chapter is missing. Run the seed script.</p>;
 
@@ -51,7 +51,7 @@ export default function HeroAdminPage() {
               name="greetingSvgId"
               label="Greeting lettering (SVG)"
               hint="Only used when the greeting style above is set to SVG."
-              initial={getMedia(c.greetingSvgId)}
+              initial={await getMedia(c.greetingSvgId)}
               allow={{ upload: true, svgOnly: true }}
             />
             <Field
@@ -122,7 +122,7 @@ export default function HeroAdminPage() {
             <MediaField
               name="portraitId"
               label="Portrait image"
-              initial={getMedia(c.portraitId)}
+              initial={await getMedia(c.portraitId)}
               allow={{ upload: true, url: true }}
             />
             <Select

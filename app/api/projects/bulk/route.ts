@@ -26,20 +26,20 @@ export async function POST(request: Request) {
 
   if (body?.mode === "single") {
     const title = items[0]?.title || "Untitled project";
-    const projectId = createProject({
+    const projectId = await createProject({
       title,
       slug: slugify(title),
       coverMediaId: items[0]?.mediaId ?? null,
       status: "draft",
       categoryIds,
     });
-    for (const item of items.slice(1)) addProjectMedia(projectId, item.mediaId);
+    for (const item of items.slice(1)) await addProjectMedia(projectId, item.mediaId);
     revalidatePath("/admin/projects");
     return NextResponse.json({ projectId, created: 1 });
   }
 
   for (const item of items) {
-    createProject({
+    await createProject({
       title: item.title,
       slug: slugify(item.title),
       coverMediaId: item.mediaId,

@@ -3,8 +3,8 @@ import { listProjects } from "@/lib/repo/projects";
 
 const base = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const { items } = listProjects({ status: "published" });
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const { items } = await listProjects({ status: "published" });
   const root = base();
   return [
     { url: `${root}/`, changeFrequency: "weekly", priority: 1 },

@@ -4,9 +4,8 @@
  *
  *   npm run admin:password -- dani@example.com "a new strong password"
  */
-import Database from "better-sqlite3";
-import path from "node:path";
-import { randomBytes, scryptSync, randomUUID } from "node:crypto";
+import { randomBytes, scryptSync } from "node:crypto";
+import { connect } from "./db.mjs";
 
 const [email, password] = process.argv.slice(2);
 if (!email || !password) {
@@ -18,20 +17,22 @@ if (password.length < 10) {
   process.exit(1);
 }
 
-const db = new Database(path.join(process.cwd(), "data", "content.db"));
+const sql = connect();
 const salt = randomBytes(16);
 const hash = `scrypt$${salt.toString("base64")}$${scryptSync(password, salt, 64).toString("base64")}`;
 
-const existing = db.prepare("SELECT user_id FROM admin_users WHERE LOWER(email) = LOWER(?)").get(email);
+const [existing] = await sql`
+  select user_id from admin_users where lower(email) = lower(${email})`;
+
 if (existing) {
-  db.prepare("UPDATE admin_users SET password_hash = ? WHERE user_id = ?").run(hash, existing.user_id);
-  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(existing.user_id);
+  await sql`update admin_users set password_hash = ${hash} where user_id = ${existing.user_id}`;
+  await sql`delete from sessions where user_id = ${existing.user_id}`;
   console.log(`✓ password changed for ${email} — other devices signed out`);
 } else {
-  db.prepare(
-    "INSERT INTO admin_users (user_id, email, password_hash, name, role, created_at) VALUES (?, ?, ?, '', 'owner', ?)",
-  ).run(randomUUID(), email.toLowerCase(), hash, new Date().toISOString());
+  await sql`
+    insert into admin_users (email, password_hash, role)
+    values (${email.toLowerCase()}, ${hash}, 'owner')`;
   console.log(`✓ admin created — ${email}`);
 }
-db.prepare("DELETE FROM login_attempts WHERE identifier = ?").run(email.toLowerCase());
-db.close();
+await sql`delete from login_attempts where identifier = ${email.toLowerCase()}`;
+await sql.end();

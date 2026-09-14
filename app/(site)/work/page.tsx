@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { WorkGallery } from "@/components/site/WorkGallery";
 import { IndexLabel, TwoToneHeading } from "@/components/site/primitives";
 import { listSections, getSettings, listActiveCategories } from "@/lib/repo/content";
-import { galleryProjects, toGalleryItem } from "@/lib/site-data";
+import { galleryProjects, toGalleryItems } from "@/lib/site-data";
 import type { Section, WorkContent } from "@/lib/types";
 
-export function generateMetadata(): Metadata {
-  const settings = getSettings();
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
   const title = settings.siteTitlePattern.includes("%s")
     ? settings.siteTitlePattern.replace("%s", "Work")
     : "Work";
@@ -23,13 +23,13 @@ export default async function WorkPage({
   searchParams: Promise<{ category?: string }>;
 }) {
   const { category } = await searchParams;
-  const settings = getSettings();
-  const section = listSections().find((s) => s.key === "work") as Section<WorkContent> | undefined;
+  const settings = await getSettings();
+  const section = (await listSections()).find((s) => s.key === "work") as Section<WorkContent> | undefined;
   const c = section?.content;
 
   // /work shows everything, featured included.
-  const items = galleryProjects(true).map(toGalleryItem);
-  const categories = listActiveCategories();
+  const items = await toGalleryItems(await galleryProjects(true));
+  const categories = await listActiveCategories();
   const initialCategory = categories.some((x) => x.slug === category) ? (category ?? null) : null;
 
   return (

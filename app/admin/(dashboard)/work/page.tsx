@@ -5,8 +5,8 @@ import { Field, Toggle, Card, FieldRow } from "@/components/admin/form";
 import { workSection } from "@/lib/repo/content";
 import { LIMITS } from "@/lib/validation";
 
-export default function WorkAdminPage() {
-  const section = workSection();
+export default async function WorkAdminPage() {
+  const section = await workSection();
   const c = section?.content;
   if (!c) return <p>Work chapter is missing. Run the seed script.</p>;
 

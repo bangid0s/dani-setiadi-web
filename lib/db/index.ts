@@ -1,37 +1,58 @@
-import Database from "better-sqlite3";
-import fs from "node:fs";
-import path from "node:path";
+import "server-only";
+import postgres from "postgres";
 
 /**
- * Single SQLite handle for the process. In dev, Next's HMR re-evaluates modules,
- * so the handle is cached on globalThis to avoid leaking connections.
+ * One Postgres pool per process.
+ *
+ * On Vercel every serverless invocation may be a fresh process, so the pool is
+ * kept tiny and cached on globalThis to survive dev hot-reloads. Use Supabase's
+ * **transaction pooler** connection string (port 6543): it is the one built for
+ * serverless, and it does not support prepared statements, hence `prepare:false`.
  */
-const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "content.db");
-
 declare global {
-  var __daniDb: Database.Database | undefined;
+  var __daniSql: postgres.Sql | undefined;
 }
 
-function create(): Database.Database {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const database = new Database(DB_PATH);
-  database.pragma("journal_mode = WAL");
-  database.pragma("foreign_keys = ON");
-  const schema = fs.readFileSync(
-    path.join(process.cwd(), "lib", "db", "schema.sql"),
-    "utf8",
-  );
-  database.exec(schema);
-  return database;
+function connectionString(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. Copy .env.example to .env.local and paste your " +
+        "Supabase connection string (Project settings → Database → Connection " +
+        "string → Transaction pooler).",
+    );
+  }
+  return url;
 }
 
-export const db: Database.Database = globalThis.__daniDb ?? (globalThis.__daniDb = create());
+function create(): postgres.Sql {
+  return postgres(connectionString(), {
+    // Supavisor's transaction mode cannot cache prepared statements.
+    prepare: false,
+    max: Number(process.env.DB_POOL_MAX ?? 3),
+    idle_timeout: 20,
+    connect_timeout: 15,
+    // Dates come back as ISO strings so the repository layer stays unchanged.
+    types: {
+      date: {
+        to: 1184,
+        from: [1082, 1114, 1184],
+        serialize: (v: Date | string) => (v instanceof Date ? v.toISOString() : v),
+        parse: (v: string) => v,
+      },
+    },
+    onnotice: () => {},
+  });
+}
+
+export const sql: postgres.Sql = globalThis.__daniSql ?? (globalThis.__daniSql = create());
 
 export const nowIso = () => new Date().toISOString();
 
-/** JSON column helper — never throws on malformed stored JSON. */
+/** JSONB columns arrive parsed; this keeps callers safe either way. */
 export function parseJson<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "object") return value as T;
   if (typeof value !== "string" || value.length === 0) return fallback;
   try {
     return JSON.parse(value) as T;
@@ -40,5 +61,4 @@ export function parseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
-export const toBool = (v: unknown): boolean => v === 1 || v === true || v === "1";
-export const fromBool = (v: boolean | undefined): number => (v ? 1 : 0);
+export const toBool = (v: unknown): boolean => v === true || v === 1 || v === "1" || v === "t";

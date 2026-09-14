@@ -6,12 +6,12 @@ import { getSettings, listCategories } from "@/lib/repo/content";
 import { listMedia } from "@/lib/repo/media";
 import { NewProjectButton } from "@/components/admin/NewProjectButton";
 
-export default function OverviewPage() {
-  const counts = countProjects();
-  const settings = getSettings();
-  const recent = listProjects({ status: "all", sort: "newest", limit: 6 }).items;
-  const media = listMedia({ limit: 1 });
-  const categories = listCategories();
+export default async function OverviewPage() {
+  const counts = await countProjects();
+  const settings = await getSettings();
+  const recent = (await listProjects({ status: "all", sort: "newest", limit: 6 })).items;
+  const media = await listMedia({ limit: 1 });
+  const categories = await listCategories();
 
   const a = settings.availability;
   const statusLabel =

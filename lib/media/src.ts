@@ -1,4 +1,5 @@
 import type { Media } from "@/lib/types";
+import { MEDIA_BUCKET, publicUrl } from "@/lib/storage-url";
 
 /**
  * Resolves the image URL for a media record.
@@ -10,11 +11,11 @@ import type { Media } from "@/lib/types";
  */
 export function mediaSrc(media: Media): string {
   if (media.source === "youtube") {
-    if (media.storagePath) return media.storagePath;
+    if (media.storagePath) return publicUrl(MEDIA_BUCKET, media.storagePath);
     return media.youtubeId ? `https://i.ytimg.com/vi/${media.youtubeId}/hqdefault.jpg` : "";
   }
-  if (media.isHotlinked) return media.originalUrl ?? media.storagePath ?? "";
-  return media.storagePath ?? media.originalUrl ?? "";
+  if (media.isHotlinked) return media.originalUrl ?? publicUrl(MEDIA_BUCKET, media.storagePath);
+  return publicUrl(MEDIA_BUCKET, media.storagePath) || (media.originalUrl ?? "");
 }
 
 /** True when the bytes are not ours, so the image optimiser must be bypassed. */

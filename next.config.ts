@@ -1,11 +1,27 @@
 import type { NextConfig } from "next";
 
+const supabaseHost = (() => {
+  try {
+    return process.env.NEXT_PUBLIC_SUPABASE_URL
+      ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
+      : null;
+  } catch {
+    return null;
+  }
+})();
+
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3", "sharp"],
+  serverExternalPackages: ["sharp", "postgres"],
   images: {
-    // Hotlinked media can come from any https host (PRD §8.4). Those render
-    // `unoptimized` (PRD §11.3), so this list only needs our own origin.
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
+    remotePatterns: [
+      // Our own Supabase Storage — these go through the optimiser.
+      ...(supabaseHost
+        ? [{ protocol: "https" as const, hostname: supabaseHost, pathname: "/storage/v1/object/public/**" }]
+        : []),
+      // Hotlinked artwork can come from any https host. Those render
+      // `unoptimized` (PRD §11.3), so this is a safety net, not a hot path.
+      { protocol: "https" as const, hostname: "**" },
+    ],
     formats: ["image/avif", "image/webp"],
   },
   async headers() {

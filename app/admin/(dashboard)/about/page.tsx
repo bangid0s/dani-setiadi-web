@@ -5,8 +5,8 @@ import { aboutSection } from "@/lib/repo/content";
 import { LIMITS } from "@/lib/validation";
 import Link from "next/link";
 
-export default function AboutAdminPage() {
-  const section = aboutSection();
+export default async function AboutAdminPage() {
+  const section = await aboutSection();
   const c = section?.content;
   if (!c) return <p>About chapter is missing. Run the seed script.</p>;
 

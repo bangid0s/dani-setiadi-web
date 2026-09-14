@@ -14,8 +14,10 @@ export default async function MediaPage({
     ? (sp.source as "upload" | "url" | "youtube")
     : "all";
 
-  const { items, total } = listMedia({ source, search: sp.q, limit: 120 });
-  const usage = Object.fromEntries(items.map((m) => [m.id, mediaUsage(m.id)]));
+  const { items, total } = await listMedia({ source, search: sp.q, limit: 120 });
+  const usage = Object.fromEntries(
+    await Promise.all(items.map(async (m) => [m.id, await mediaUsage(m.id)] as const)),
+  );
 
   return (
     <>

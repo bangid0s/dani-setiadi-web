@@ -1,21 +1,24 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import {
-  MAX_UPLOAD_BYTES, ACCEPTED_IMAGE_TYPES, detectType, processImage, storeFile,
-  FILES_DIR,
+  MAX_UPLOAD_BYTES, ACCEPTED_IMAGE_TYPES, detectType, processImage,
 } from "@/lib/media/process";
+import {
+  uploadObject, newObjectPath, MEDIA_BUCKET, FILES_BUCKET, publicUrl,
+} from "@/lib/storage";
 import { insertMedia } from "@/lib/repo/media";
 
 export const runtime = "nodejs";
 
 /**
  * PRD §8.3 upload pipeline. Files arrive as multipart form data; the server
- * validates by signature, processes, stores, then writes the `media` row.
+ * validates by signature, processes, uploads to Supabase Storage, then writes
+ * the `media` row.
  *
- * Note (PRD §8.3): the spec calls for a signed direct-to-storage upload because
- * serverless request bodies are capped at ~4.5 MB. This build stores on the
- * app's own filesystem, so a direct POST is correct here — swap this route for
- * a signed-URL flow if you move storage to Supabase/S3.
+ * Note: Vercel caps a serverless request body at 4.5 MB, so very large
+ * originals should go through a signed direct-to-storage upload (PRD §8.3).
+ * The 4.5 MB ceiling is documented in the deploy runbook; images are downscaled
+ * to 3200 px here, so most real artwork lands well under it.
  */
 export async function POST(request: Request) {
   try {
@@ -47,8 +50,10 @@ export async function POST(request: Request) {
     if (buffer.length > 10 * 1024 * 1024) {
       return NextResponse.json({ error: "The CV must be 10 MB or smaller." }, { status: 413 });
     }
-    const path = await storeFile(buffer, "application/pdf", FILES_DIR);
-    return NextResponse.json({ path, filename: file.name });
+    const objectPath = await uploadObject(
+      FILES_BUCKET, newObjectPath("application/pdf"), buffer, "application/pdf",
+    );
+    return NextResponse.json({ path: publicUrl(FILES_BUCKET, objectPath), filename: file.name });
   }
 
   if (!detected || !ACCEPTED_IMAGE_TYPES.includes(detected)) {
@@ -67,10 +72,12 @@ export async function POST(request: Request) {
     const processed = await processImage(buffer, detected, {
       keepOriginal: String(form?.get("keepOriginal") ?? "") === "1",
     });
-    const path = await storeFile(processed.buffer, processed.mime);
-    const media = insertMedia({
+    const objectPath = await uploadObject(
+      MEDIA_BUCKET, newObjectPath(processed.mime), processed.buffer, processed.mime,
+    );
+    const media = await insertMedia({
       source: "upload",
-      storagePath: path,
+      storagePath: objectPath,
       title: file.name,
       mimeType: processed.mime,
       bytes: processed.buffer.length,
