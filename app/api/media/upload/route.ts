@@ -5,6 +5,7 @@ import {
 } from "@/lib/media/process";
 import {
   uploadObject, newObjectPath, MEDIA_BUCKET, FILES_BUCKET, publicUrl,
+  StorageNotConfiguredError,
 } from "@/lib/storage";
 import { insertMedia } from "@/lib/repo/media";
 
@@ -50,10 +51,18 @@ export async function POST(request: Request) {
     if (buffer.length > 10 * 1024 * 1024) {
       return NextResponse.json({ error: "The CV must be 10 MB or smaller." }, { status: 413 });
     }
-    const objectPath = await uploadObject(
-      FILES_BUCKET, newObjectPath("application/pdf"), buffer, "application/pdf",
-    );
-    return NextResponse.json({ path: publicUrl(FILES_BUCKET, objectPath), filename: file.name });
+    try {
+      const objectPath = await uploadObject(
+        FILES_BUCKET, newObjectPath("application/pdf"), buffer, "application/pdf",
+      );
+      return NextResponse.json({ path: publicUrl(FILES_BUCKET, objectPath), filename: file.name });
+    } catch (err) {
+      const status = err instanceof StorageNotConfiguredError ? 503 : 502;
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "That file couldn’t be saved." },
+        { status },
+      );
+    }
   }
 
   if (!detected || !ACCEPTED_IMAGE_TYPES.includes(detected)) {
@@ -87,7 +96,19 @@ export async function POST(request: Request) {
       dominantColor: processed.dominantColor,
     });
     return NextResponse.json({ media });
-  } catch {
+  } catch (err) {
+    if (err instanceof StorageNotConfiguredError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
+    }
+    // A failed upload is a different problem from an unreadable file; saying
+    // "your file is corrupted" when storage rejected it sends you down the
+    // wrong path entirely.
+    if (err instanceof Error && err.message.startsWith("Storage upload failed")) {
+      return NextResponse.json(
+        { error: `“${file.name}” couldn’t be saved to storage.`, hint: err.message },
+        { status: 502 },
+      );
+    }
     return NextResponse.json(
       { error: `“${file.name}” couldn’t be read. It may be corrupted — try exporting it again.` },
       { status: 422 },

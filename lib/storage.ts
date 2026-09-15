@@ -9,15 +9,20 @@ import { MEDIA_BUCKET, FILES_BUCKET, publicUrl } from "@/lib/storage-url";
  * reaches the browser. Reads are plain public URLs, so next/image and <img>
  * fetch them without a round trip through us.
  */
+export class StorageNotConfiguredError extends Error {
+  constructor() {
+    super(
+      "File storage isn’t set up yet. Add SUPABASE_SERVICE_ROLE_KEY from " +
+        "Supabase → Project settings → API, then restart.",
+    );
+    this.name = "StorageNotConfiguredError";
+  }
+}
+
 function config() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error(
-      "Supabase storage is not configured. Set NEXT_PUBLIC_SUPABASE_URL and " +
-        "SUPABASE_SERVICE_ROLE_KEY (Project settings → API).",
-    );
-  }
+  if (!url || !key) throw new StorageNotConfiguredError();
   return { url: url.replace(/\/$/, ""), key };
 }
 
