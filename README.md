@@ -66,7 +66,7 @@ protocol) so you can run the whole app offline — see
 |---|---|
 | Framework | Next.js (App Router, TypeScript) |
 | Styling | Tailwind CSS v4, brand tokens via `@theme` (PRD §5.10) |
-| Database | Supabase Postgres, via the `postgres` driver over the transaction pooler |
+| Database | Supabase Postgres, via the `postgres` driver over the **session** pooler (port 5432) |
 | Files | Supabase Storage — `media` and `files` buckets |
 | Images | `sharp` — downscaling, blur placeholders, dominant colour |
 | Validation | Zod schemas shared by client and server |
@@ -82,6 +82,15 @@ Both were taken to avoid dependencies outside PRD §11.1:
   passed through `dangerouslySetInnerHTML`, so markup cannot be injected.
 - Reordering uses **Move up / Move down** buttons rather than dnd-kit. PRD §9.2
   allows this explicitly, and it works with touch and the keyboard out of the box.
+
+### Rendering
+
+Every page is rendered on demand rather than prerendered at build. That keeps a
+deploy from depending on the database being reachable at that moment, and means
+an edit in the dashboard is live immediately with no cache to invalidate. Reads
+are de-duplicated per request with React's `cache()`, so a page that asks for the
+settings in the layout, in `generateMetadata` and again in the component pays for
+one query rather than three.
 
 ### How access control works
 
@@ -127,13 +136,18 @@ DEPLOY.md                 going live on GitHub + Supabase + Vercel
 Copy `.env.example` to `.env.local`. All four are required:
 
 ```bash
-DATABASE_URL=                 # Supabase → Database → Transaction pooler (port 6543)
+DATABASE_URL=                 # Supabase → Database → Session pooler (port 5432, NOT 6543)
 NEXT_PUBLIC_SUPABASE_URL=     # Supabase → API → Project URL
 SUPABASE_SERVICE_ROLE_KEY=    # Supabase → API → service_role (server-only, never commit)
 NEXT_PUBLIC_SITE_URL=         # your public address, no trailing slash
 ```
 
 Set the same four in Vercel → Project → Settings → Environment Variables.
+
+> **Port 5432, not 6543.** The transaction pooler cannot safely interleave the
+> pipelined queries this client sends; past two concurrent queries it stalls
+> rather than erroring, so pages hang instead of failing. `lib/db/index.ts`
+> warns at startup if it sees 6543.
 
 ## Security notes
 

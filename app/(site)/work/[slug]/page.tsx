@@ -5,22 +5,10 @@ import { MediaImage } from "@/components/media/MediaImage";
 import { YouTubeFacade } from "@/components/media/YouTubeFacade";
 import { DotBullet, ExternalLinkIcon, TwoToneHeading } from "@/components/site/primitives";
 import { RichText, toPlainText } from "@/lib/richtext";
-import { getProjectBySlug, projectNeighbours, listProjects } from "@/lib/repo/projects";
+import { getProjectBySlug, projectNeighbours } from "@/lib/repo/projects";
 import { getMedia } from "@/lib/repo/media";
 import { getSettings } from "@/lib/repo/content";
 import { pad2 } from "@/lib/format";
-
-export async function generateStaticParams() {
-  // Pre-rendering project pages is an optimisation, not a requirement: any slug
-  // not listed here still renders on demand. Failing soft means a momentary
-  // database hiccup during a deploy cannot break the whole build.
-  try {
-    const { items } = await listProjects({ status: "published" });
-    return items.map((p) => ({ slug: p.slug }));
-  } catch {
-    return [];
-  }
-}
 
 export async function generateMetadata({
   params,

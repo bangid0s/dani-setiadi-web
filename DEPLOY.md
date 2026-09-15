@@ -64,17 +64,24 @@ You should see "Success. No rows returned" both times.
 
 ### Collect the three values you need
 
-**Project Settings → Database → Connection string → Transaction pooler**
+**Project Settings → Database → Connection string → Session pooler**
 
 Copy it and replace `[YOUR-PASSWORD]` with the password from step 3. It looks
 like:
 
 ```
-postgresql://postgres.abcdefgh:YOUR-PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
+postgresql://postgres.abcdefgh:YOUR-PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
 ```
 
-> Use the **Transaction pooler** (port 6543), not the direct connection. It is
-> the one designed for serverless, which is how Vercel runs this app.
+> **Use the Session pooler — port 5432.** Supabase also offers a Transaction
+> pooler on port 6543, and it will *look* like it works: a single query returns
+> fine. But this app's Postgres client pipelines queries onto a connection, and
+> transaction mode cannot interleave them safely — past two concurrent queries
+> it stalls indefinitely instead of returning an error. Pages then hang rather
+> than fail, which is much harder to diagnose.
+>
+> Same host, same password, just the other port. The app prints a warning at
+> startup if it spots port 6543.
 
 **Project Settings → API**
 
@@ -130,7 +137,7 @@ npm run dev
 
    | Name | Value |
    |---|---|
-   | `DATABASE_URL` | the transaction pooler string, with your password |
+   | `DATABASE_URL` | the **session pooler** string (port 5432), with your password |
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://abcdefgh.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | the long `eyJ…` secret |
    | `NEXT_PUBLIC_SITE_URL` | `https://your-project.vercel.app` for now |
@@ -212,5 +219,12 @@ Reset the password from your own machine:
 npm run admin:password -- you@example.com "a long new password"
 ```
 
+**Pages hang and never finish loading**
+`DATABASE_URL` is almost certainly on port **6543**. Change it to **5432** (the
+session pooler) and redeploy. Check the Vercel function logs — the app logs a
+warning naming this exact problem when it sees 6543.
+
 **"Too many connections"**
-Confirm `DATABASE_URL` uses port **6543** (transaction pooler), not 5432.
+Session mode holds one server connection per client connection. Lower
+`DB_POOL_MAX` (default 3) in your environment variables, or upgrade the Supabase
+plan if real traffic has outgrown the free tier.

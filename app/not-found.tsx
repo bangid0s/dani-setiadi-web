@@ -1,12 +1,18 @@
 import Link from "next/link";
 import { getSettings } from "@/lib/repo/content";
+import { uiLabelsSchema } from "@/lib/validation";
 
 /**
  * PRD §7.7 — the script "Oops," over a huge "404" in Signal.
  * Rendered inside the root layout, so it carries no html/body of its own.
  */
 export default async function NotFound() {
-  const labels = (await getSettings()).uiLabels;
+  // This page is prerendered, so it must not depend on the database being
+  // reachable at build time. Custom wording is used when it is; otherwise the
+  // defaults render and the page still looks right.
+  const labels = await getSettings()
+    .then((s) => s.uiLabels)
+    .catch(() => uiLabelsSchema.parse({}));
 
   return (
     <div className="page">

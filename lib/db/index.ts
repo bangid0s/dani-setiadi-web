@@ -2,16 +2,25 @@ import "server-only";
 import postgres from "postgres";
 
 /**
- * One Postgres pool per process.
+ * Postgres connection for the whole app.
  *
- * On Vercel every serverless invocation may be a fresh process, so the pool is
- * kept tiny and cached on globalThis to survive dev hot-reloads. Use Supabase's
- * **transaction pooler** connection string (port 6543): it is the one built for
- * serverless, and it does not support prepared statements, hence `prepare:false`.
+ * Use Supabase's **session pooler** — the pooler host on port **5432**.
+ *
+ * Supabase also offers a transaction pooler on port 6543. Do not use it here:
+ * postgres.js pipelines queries onto a connection, and transaction mode cannot
+ * interleave them safely, so anything past two concurrent queries stalls
+ * indefinitely rather than erroring. Session mode behaves like a normal
+ * Postgres connection and handles the app's concurrency comfortably.
+ *
+ * The pool is deliberately small and gives idle connections back quickly:
+ * session mode holds a server-side connection for as long as the client keeps
+ * one, and a serverless platform may run many instances at once.
  */
 declare global {
   var __daniSql: postgres.Sql | undefined;
 }
+
+const TRANSACTION_POOLER_PORT = "6543";
 
 function connectionString(): string {
   const url = process.env.DATABASE_URL;
@@ -19,18 +28,37 @@ function connectionString(): string {
     throw new Error(
       "DATABASE_URL is not set. Copy .env.example to .env.local and paste your " +
         "Supabase connection string (Project settings → Database → Connection " +
-        "string → Transaction pooler).",
+        "string → Session pooler).",
     );
   }
   return url;
 }
 
+function usesTransactionPooler(url: string): boolean {
+  try {
+    return new URL(url).port === TRANSACTION_POOLER_PORT;
+  } catch {
+    return false;
+  }
+}
+
 function create(): postgres.Sql {
-  return postgres(connectionString(), {
-    // Supavisor's transaction mode cannot cache prepared statements.
-    prepare: false,
+  const url = connectionString();
+  const transactionMode = usesTransactionPooler(url);
+
+  if (transactionMode) {
+    console.warn(
+      "[db] DATABASE_URL points at the transaction pooler (port 6543). " +
+        "Queries can stall there. Switch to the session pooler (port 5432) — " +
+        "same host, same credentials, just the other port.",
+    );
+  }
+
+  return postgres(url, {
+    // Prepared statements are unavailable in transaction mode; harmless to skip.
+    prepare: !transactionMode,
     max: Number(process.env.DB_POOL_MAX ?? 3),
-    idle_timeout: 20,
+    idle_timeout: Number(process.env.DB_IDLE_TIMEOUT ?? 30),
     connect_timeout: 15,
     // Dates come back as ISO strings so the repository layer stays unchanged.
     types: {
@@ -42,6 +70,12 @@ function create(): postgres.Sql {
       },
     },
     onnotice: () => {},
+    ...(process.env.DB_TRACE
+      ? {
+          debug: (_conn: number, query: string) =>
+            console.error("[db] query:", query.slice(0, 90)),
+        }
+      : {}),
   });
 }
 

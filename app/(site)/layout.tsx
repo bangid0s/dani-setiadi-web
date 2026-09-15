@@ -6,6 +6,18 @@ import { availabilityHref } from "@/lib/site-data";
 import { whatsappUrl, mailtoUrl } from "@/lib/format";
 import type { HeroContent } from "@/lib/types";
 
+/**
+ * Rendered per request rather than prerendered at build.
+ *
+ * The build would otherwise have to reach Supabase for every page, which makes
+ * a deploy depend on the database being reachable at that moment — and Next
+ * tears a render down as soon as it detects dynamic usage, which can abandon an
+ * in-flight query and stall the connection behind it. Rendering on demand keeps
+ * deploys deterministic and means an edit in the dashboard is live immediately,
+ * with no cache to invalidate.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const settings = await getSettings();
   const sections = await listSections({ visibleOnly: true });

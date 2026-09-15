@@ -4,6 +4,13 @@ import { currentAdmin } from "@/lib/auth";
 import { logoutAction } from "@/app/admin/auth-actions";
 import { AdminNav } from "@/components/admin/AdminNav";
 
+/**
+ * The dashboard is per-user by definition, so there is nothing to prerender.
+ * Saying so up front keeps the build from spending a worker on each admin page
+ * only to discover it reads cookies.
+ */
+export const dynamic = "force-dynamic";
+
 /** ADM-01 — /admin/** requires login. The gate runs before anything renders. */
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await currentAdmin();

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { sql, parseJson, toBool } from "@/lib/db";
 import { slugify } from "@/lib/ids";
 import { getMedia, getMediaMany } from "@/lib/repo/media";
@@ -14,7 +15,13 @@ type Row = Record<string, unknown>;
 
 // --- Sections ---------------------------------------------------------------
 
-export async function listSections(opts: { visibleOnly?: boolean } = {}): Promise<Section[]> {
+/**
+ * Reads are wrapped in React's `cache()`, which de-duplicates identical calls
+ * within a single request. Without it a page that asks for the settings in the
+ * layout, in generateMetadata and again in the component pays for three round
+ * trips to the database instead of one.
+ */
+const fetchSections = cache(async (): Promise<Section[]> => {
   const rows = await sql<Row[]>`select * from sections order by sort_order asc`;
   const all = rows.map((r) => ({
     key: r.key as SectionKey,
@@ -29,6 +36,11 @@ export async function listSections(opts: { visibleOnly?: boolean } = {}): Promis
   let n = 0;
   for (const s of all) if (s.isVisible) s.index = ++n;
 
+  return all;
+});
+
+export async function listSections(opts: { visibleOnly?: boolean } = {}): Promise<Section[]> {
+  const all = await fetchSections();
   return opts.visibleOnly ? all.filter((s) => s.isVisible) : all;
 }
 
@@ -75,7 +87,7 @@ export async function reorderSections(keys: string[]): Promise<void> {
 
 const DEFAULT_UI_LABELS: UiLabels = uiLabelsSchema.parse({});
 
-export async function getSettings(): Promise<SiteSettings> {
+export const getSettings = cache(async (): Promise<SiteSettings> => {
   const [r = {} as Row] = await sql<Row[]>`select * from site_settings where id = 1`;
   const availability = availabilitySchema.parse(parseJson(r.availability, {}));
   const gallery = gallerySettingsSchema.parse(parseJson(r.gallery_settings, {}));
@@ -105,7 +117,7 @@ export async function getSettings(): Promise<SiteSettings> {
     uiLabels: { ...DEFAULT_UI_LABELS, ...uiLabels },
     showFloatingWhatsApp: stored.showFloatingWhatsApp === true,
   };
-}
+});
 
 export async function updateSettings(patch: Record<string, unknown>): Promise<void> {
   const column: Record<string, string> = {
@@ -140,9 +152,8 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<vo
 
 // --- Tools ------------------------------------------------------------------
 
-export async function listTools(opts: { visibleOnly?: boolean } = {}): Promise<Tool[]> {
-  const filter = opts.visibleOnly ? sql`where is_visible` : sql``;
-  const rows = await sql<Row[]>`select * from tools ${filter} order by sort_order asc`;
+const fetchTools = cache(async (): Promise<Tool[]> => {
+  const rows = await sql<Row[]>`select * from tools order by sort_order asc`;
   const icons = await getMediaMany(rows.map((r) => r.icon_media_id as string).filter(Boolean));
   return rows.map((r) => ({
     id: String(r.id),
@@ -153,6 +164,11 @@ export async function listTools(opts: { visibleOnly?: boolean } = {}): Promise<T
     sortOrder: Number(r.sort_order),
     isVisible: toBool(r.is_visible),
   }));
+});
+
+export async function listTools(opts: { visibleOnly?: boolean } = {}): Promise<Tool[]> {
+  const all = await fetchTools();
+  return opts.visibleOnly ? all.filter((t) => t.isVisible) : all;
 }
 
 type ToolInput = { name: string; iconMediaId?: string | null; url?: string | null; isVisible?: boolean };
@@ -182,9 +198,8 @@ export const reorderTools = (ids: string[]) => reorder("tools", ids);
 
 // --- Experience -------------------------------------------------------------
 
-export async function listExperiences(opts: { visibleOnly?: boolean } = {}): Promise<Experience[]> {
-  const filter = opts.visibleOnly ? sql`where is_visible` : sql``;
-  const rows = await sql<Row[]>`select * from experiences ${filter} order by sort_order asc`;
+const fetchExperiences = cache(async (): Promise<Experience[]> => {
+  const rows = await sql<Row[]>`select * from experiences order by sort_order asc`;
   return rows.map((r) => ({
     id: String(r.id),
     company: String(r.company),
@@ -199,6 +214,13 @@ export async function listExperiences(opts: { visibleOnly?: boolean } = {}): Pro
     sortOrder: Number(r.sort_order),
     isVisible: toBool(r.is_visible),
   }));
+});
+
+export async function listExperiences(
+  opts: { visibleOnly?: boolean } = {},
+): Promise<Experience[]> {
+  const all = await fetchExperiences();
+  return opts.visibleOnly ? all.filter((e) => e.isVisible) : all;
 }
 
 type ExperienceInput = Omit<
@@ -266,14 +288,20 @@ function rowToCategory(r: Row): Category {
   };
 }
 
-export async function listCategories(opts: { visibleOnly?: boolean } = {}): Promise<Category[]> {
-  const filter = opts.visibleOnly ? sql`where is_visible` : sql``;
-  const rows = await sql<Row[]>`select * from categories ${filter} order by sort_order asc`;
+const fetchCategories = cache(async (): Promise<Category[]> => {
+  const rows = await sql<Row[]>`select * from categories order by sort_order asc`;
   return rows.map(rowToCategory);
+});
+
+export async function listCategories(
+  opts: { visibleOnly?: boolean } = {},
+): Promise<Category[]> {
+  const all = await fetchCategories();
+  return opts.visibleOnly ? all.filter((c) => c.isVisible) : all;
 }
 
 /** Categories that have at least one published project (PRD §7.3.3 filters). */
-export async function listActiveCategories(): Promise<Category[]> {
+export const listActiveCategories = cache(async (): Promise<Category[]> => {
   const rows = await sql<Row[]>`
     select c.* from categories c
     where c.is_visible and exists (
@@ -282,7 +310,7 @@ export async function listActiveCategories(): Promise<Category[]> {
       where pc.category_id = c.id and p.status = 'published' and p.deleted_at is null)
     order by c.sort_order asc`;
   return rows.map(rowToCategory);
-}
+});
 
 export async function createCategory(name: string, isVisible = true): Promise<string> {
   const slug = await uniqueSlug("categories", slugify(name));

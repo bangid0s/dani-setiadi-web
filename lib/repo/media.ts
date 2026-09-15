@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { sql, parseJson, toBool } from "@/lib/db";
 import type { Media } from "@/lib/types";
 
@@ -31,12 +32,12 @@ export function rowToMedia(r: Row | undefined): Media | null {
   };
 }
 
-export async function getMedia(id: string | null | undefined): Promise<Media | null> {
+export const getMedia = cache(async (id: string | null | undefined): Promise<Media | null> => {
   if (!id) return null;
   const rows = await sql<Row[]>`
     select * from media where id = ${id} and deleted_at is null`;
   return rowToMedia(rows[0]);
-}
+});
 
 export async function getMediaMany(ids: string[]): Promise<Map<string, Media>> {
   const out = new Map<string, Media>();
