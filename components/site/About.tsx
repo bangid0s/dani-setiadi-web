@@ -68,7 +68,7 @@ export function About({
                     ) : (
                       <span
                         title={tool.name}
-                        className="tool-icon flex items-center justify-center rounded-lg bg-surface text-[11px] font-semibold text-ink"
+                        className="tool-icon flex items-center justify-center rounded-lg bg-surface text-[clamp(0.75rem,1.6cqi,0.9375rem)] font-semibold text-ink"
                       >
                         {initials(tool.name)}
                       </span>

@@ -265,6 +265,20 @@ body {
   .chip:hover { background: var(--color-signal-tint); }
   .chip[aria-pressed="true"] { background: var(--color-signal); color: var(--color-ink); }
 
+  /* WCAG 2.5.8 — small type sets a small tap target. Where padding would move
+     the layout (a wrapped row of footer links, say), this grows the target to
+     44px with an overlay instead, so the type and the spacing both stay put.
+     Where padding is free, prefer padding: it also widens the hover area. */
+  .tap-44 { position: relative; }
+  .tap-44::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 50%;
+    height: 2.75rem;
+    translate: 0 -50%;
+  }
+
   .text-link {
     color: var(--color-ink);
     text-decoration: underline;

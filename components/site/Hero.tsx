@@ -62,11 +62,19 @@ export function Hero({
             </p>
           ) : null}
           {c.locationLine ? (
-            <p className="mt-1 flex items-start gap-1.5 text-[clamp(1rem,1.6cqi,1.3rem)] leading-snug text-ink sm:justify-end">
-              {c.showLocationIcon ? (
-                <MapPinIcon className="mt-[0.2em] size-[1em] shrink-0 text-signal" />
-              ) : null}
-              <span className="sm:max-w-[24ch]">{c.locationLine}</span>
+            <p className="mt-1 text-[clamp(1rem,1.6cqi,1.3rem)] leading-snug text-ink">
+              {/* The pin sits INSIDE the text flow, not beside it as a flex item.
+                  As a flex item it was laid out against the 24ch box, while the
+                  text inside that box was right-aligned to its own shorter wrapped
+                  lines — which parked the pin ~100px from the first word. Inline,
+                  it travels with the word it marks. No whitespace between the icon
+                  and the text, so a line can never break them apart. */}
+              <span className="inline-block sm:max-w-[24ch]">
+                {c.showLocationIcon ? (
+                  <MapPinIcon className="mr-1.5 inline-block size-[1em] align-[-0.145em] text-signal" />
+                ) : null}
+                {c.locationLine}
+              </span>
             </p>
           ) : null}
         </div>

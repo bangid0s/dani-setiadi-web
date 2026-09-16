@@ -25,7 +25,7 @@ export function SiteFooter({ settings }: { settings: SiteSettings }) {
                   href={s.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="t-meta inline-flex items-center gap-1 text-ink hover:text-ember"
+                  className="tap-44 t-meta inline-flex items-center gap-1 text-ink hover:text-ember"
                 >
                   {s.label || s.platform}
                   <ExternalLinkIcon className="size-3" />
@@ -37,7 +37,7 @@ export function SiteFooter({ settings }: { settings: SiteSettings }) {
 
         <Link
           href="#top"
-          className="t-meta inline-flex items-center gap-1.5 text-ink hover:text-ember sm:justify-end"
+          className="tap-44 t-meta inline-flex items-center gap-1.5 text-ink hover:text-ember sm:justify-end"
         >
           {settings.uiLabels.backToTop}
           <span aria-hidden="true">↑</span>
