@@ -8,9 +8,19 @@ import type { UiLabels } from "@/lib/types";
 type NavChapter = { key: string; label: string; index: number; href: string };
 
 /**
- * PRD §6.2 — transparent over the hero; after 80 px of scrolling it gains a
- * Cream background and a 1 px line border. On mobile it hides while scrolling
- * down and reappears when scrolling up.
+ * The portrait's top edge clears this header by ~2rem when the page is at rest,
+ * so at rest the header is transparent over Cream alone. Scrolling closes that
+ * gap in about 32px, well before the PRD's original 80px threshold — which left
+ * a band of scrolling where the links sat over the photo with nothing behind
+ * them. Going opaque at 24px keeps the header readable over the portrait while
+ * still reading as transparent at rest, which is what §6.2 is protecting.
+ */
+const SOLID_AFTER_PX = 24;
+
+/**
+ * PRD §6.2 — transparent over the hero; once scrolling starts it gains a Cream
+ * background and a 1 px line border. On mobile it hides while scrolling down and
+ * reappears when scrolling up.
  */
 export function SiteNav({
   chapters,
@@ -34,7 +44,7 @@ export function SiteNav({
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY;
-      setScrolled(y > 80);
+      setScrolled(y > SOLID_AFTER_PX);
       setHidden(y > 200 && y > lastY.current);
       lastY.current = y;
     };
@@ -96,14 +106,27 @@ export function SiteNav({
 
   return (
     <>
+      {/* Only the slide transitions. The background used to fade over 300ms,
+          which lost a race: a fast flick puts the portrait behind the header in
+          ~80ms, leaving the links over the photo while the Cream was still 3%
+          opaque. Snapping costs nothing to look at — Cream over a Cream hero is
+          invisible, so what actually appears is the 1px border. */}
       <header
-        className={`fixed inset-x-0 top-0 z-50 transition-[transform,background-color,border-color] duration-300 ${
+        className={`fixed inset-x-0 top-0 z-50 transition-transform duration-300 ${
           scrolled || open ? "border-b border-line bg-cream" : "border-b border-transparent"
         } ${hidden && !open ? "-translate-y-full" : "translate-y-0"}`}
       >
         <div className="page">
           <div className="gutter flex h-16 items-center justify-between gap-4 lg:h-20">
-            <Link href="/" className="font-display text-[18px] font-bold tracking-tight text-ink">
+            {/* The padding on these is hit area, not spacing: the row is a fixed
+                h-16/lg:h-20 with items centred, so it grows the tappable box to
+                ~44px without moving anything. The chapter links matter most —
+                the desktop nav appears from `md`, which is an iPad's portrait
+                width, where a 16px-tall link is a touch target. */}
+            <Link
+              href="/"
+              className="py-2.5 font-display text-[18px] font-bold tracking-tight text-ink"
+            >
               {wordmark}
             </Link>
 
@@ -113,7 +136,7 @@ export function SiteNav({
                   key={c.key}
                   href={c.href}
                   aria-current={current === c.href ? "true" : undefined}
-                  className={`t-index transition-colors hover:text-ember ${
+                  className={`t-index py-3.5 transition-colors hover:text-ember ${
                     current === c.href ? "text-ember" : "text-ink"
                   }`}
                 >
@@ -123,7 +146,7 @@ export function SiteNav({
               {availability ? (
                 <Link
                   href={availability.href}
-                  className={`rounded-full border-2 px-4 py-1 text-[14px] font-semibold uppercase tracking-[0.04em] transition-colors ${
+                  className={`tap-44 rounded-full border-2 px-4 py-1 text-[14px] font-semibold uppercase tracking-[0.04em] transition-colors ${
                     availability.status === "closed"
                       ? "border-line text-muted"
                       : "border-signal text-ink hover:bg-signal-tint"

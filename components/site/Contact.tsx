@@ -67,11 +67,19 @@ export function Contact({
         {channels.length > 0 ? (
           <div className="min-w-0 lg:col-span-5 lg:col-start-8 lg:pt-[clamp(1rem,4cqi,3rem)]">
             <ul className="divide-y divide-line border-t border-line">
-              {channels.map((ch) => (
-                <li key={ch.key} className="py-3 first:pt-0 lg:py-4">
+              {/* The row's padding lives on the anchor, not the li, so the whole
+                  row is tappable rather than just the 25px of text, and `flex`
+                  spans it the full width for the hover and tap area. The list
+                  comes out 4px shorter than it was: the anchor no longer sits on
+                  the li's text baseline, so it sheds that line's leading. That
+                  was incidental space, not spacing anyone chose. */}
+              {channels.map((ch, i) => (
+                <li key={ch.key}>
                   <a
                     href={ch.href}
-                    className="text-link t-h3 inline-flex items-center gap-2"
+                    className={`text-link t-h3 flex items-center gap-2 ${
+                      i === 0 ? "pb-3 lg:pb-4" : "py-3 lg:py-4"
+                    }`}
                     {...(ch.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                     data-analytics={ch.key === "whatsapp" ? "cta_whatsapp" : ch.key === "email" ? "cta_email" : undefined}
                   >
