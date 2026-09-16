@@ -33,6 +33,16 @@ export function Hero({
         ? "two-lines"
         : c.nameLayout;
 
+  // HERO-01 — from `xl` up the portrait is sized by the frame's HEIGHT, not its
+  // width. Below that, width is the scarce axis and the width classes rule; but
+  // a wide viewport grows the hero to 100svh while a width-capped portrait stops
+  // growing, which left a tall band of empty cream above the photo. Deriving the
+  // width from the frame's height and the image's own ratio keeps the portrait
+  // filling the frame at any window size. The `vw` term guards a square or
+  // landscape crop from spanning the viewport; `7rem` clears the fixed nav.
+  const ratio = portrait && portrait.height > 0 ? portrait.width / portrait.height : 0.75;
+  const portraitWidth = `min(48vw, calc((min(100svh, 1080px) - 7rem) * ${ratio}))`;
+
   return (
     <section
       id="intro"
@@ -70,11 +80,12 @@ export function Hero({
       >
         {portrait ? (
           <div
-            className="anim-portrait absolute bottom-0 w-[85%] max-w-[560px] sm:w-[46%] lg:w-[40%]"
+            className="anim-portrait absolute bottom-0 w-[85%] max-w-[560px] sm:w-[46%] lg:w-[40%] xl:w-[var(--portrait-w)] xl:max-w-none"
             style={{
               left: `${c.portraitPosition?.x ?? 53}%`,
               transform: `translateX(-50%) scale(${c.portraitScale ?? 1})`,
               transformOrigin: "bottom center",
+              ["--portrait-w" as string]: portraitWidth,
             }}
           >
             <div className="portrait-shadow">
@@ -82,7 +93,7 @@ export function Hero({
                 media={portrait}
                 fill={false}
                 priority
-                sizes="(max-width: 640px) 85vw, 45vw"
+                sizes="(max-width: 640px) 85vw, (max-width: 1280px) 46vw, 48vw"
                 className="h-auto w-full"
               />
             </div>
