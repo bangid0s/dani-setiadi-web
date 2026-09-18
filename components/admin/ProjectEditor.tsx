@@ -476,6 +476,11 @@ function DangerZone({ project }: { project: Project }) {
       <div className="flex flex-wrap items-center gap-2">
         <form action={bulkProjectAction}>
           <input type="hidden" name="selected" value={project.id} />
+          <input
+            type="hidden"
+            name="redirect"
+            value={`/admin/projects?msg=Project+${project.status === "published" ? "unpublished" : "published"}`}
+          />
           <button
             type="submit"
             name="op"
@@ -487,6 +492,7 @@ function DangerZone({ project }: { project: Project }) {
         </form>
         <form action={bulkProjectAction}>
           <input type="hidden" name="selected" value={project.id} />
+          <input type="hidden" name="redirect" value="/admin/projects?msg=Project+archived" />
           <button
             type="submit"
             name="op"

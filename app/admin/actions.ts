@@ -421,8 +421,7 @@ export async function saveProjectAction(
 
   revalidateSite();
   revalidatePath(`/admin/projects/${projectId}`);
-  if (!id) redirect(`/admin/projects/${projectId}`);
-  return ok(intent === "publish" ? "Published." : "Saved.");
+  redirect(`/admin/projects?msg=${intent === "publish" ? "Project+published" : "Project+saved"}`);
 }
 
 export async function createProjectAction(): Promise<void> {
