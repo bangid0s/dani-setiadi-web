@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { scrypt as scryptCb, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
@@ -111,6 +112,8 @@ export async function countAdmins(): Promise<number> {
 export async function startSession(userId: string): Promise<void> {
   const token = newToken();
   const expires = new Date(Date.now() + SESSION_DAYS * 864e5);
+  // Prune expired sessions on login to keep sessions table clean without slowing reads
+  await sql`delete from sessions where expires_at < now()`;
   await sql`
     insert into sessions (token, user_id, expires_at)
     values (${token}, ${userId}, ${expires.toISOString()})`;
@@ -131,18 +134,17 @@ export async function endSession(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
-/** Current admin, or null. Expired sessions are pruned on read. */
-export async function currentAdmin(): Promise<AdminUser | null> {
+/** Current admin, or null. Cached per request; never executes a write query on read. */
+export const currentAdmin = cache(async (): Promise<AdminUser | null> => {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  await sql`delete from sessions where expires_at < now()`;
   const [r] = await sql<Row[]>`
     select u.* from sessions s
     join admin_users u on u.user_id = s.user_id
     where s.token = ${token} and s.expires_at > now()`;
   return rowToUser(r);
-}
+});
 
 /**
  * ADM-03 — every server action re-checks admin rights. Never trust the UI.

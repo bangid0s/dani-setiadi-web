@@ -13,6 +13,9 @@ const supabaseHost = (() => {
 const nextConfig: NextConfig = {
   serverExternalPackages: ["sharp", "postgres"],
   images: {
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    minimumCacheTTL: 2678400, // 31 days cache for optimized images
     remotePatterns: [
       // Our own Supabase Storage — these go through the optimiser.
       ...(supabaseHost

@@ -54,12 +54,15 @@ function create(): postgres.Sql {
     );
   }
 
+  const defaultMax = process.env.NODE_ENV === "production" ? 2 : 10;
+
   return postgres(url, {
-    // Prepared statements are unavailable in transaction mode; harmless to skip.
-    prepare: !transactionMode,
-    max: Number(process.env.DB_POOL_MAX ?? 3),
-    idle_timeout: Number(process.env.DB_IDLE_TIMEOUT ?? 30),
-    connect_timeout: 15,
+    // Prepared statements are disabled to ensure full compatibility with Supabase poolers
+    // and avoid collision issues across connection re-use.
+    prepare: false,
+    max: Number(process.env.DB_POOL_MAX ?? defaultMax),
+    idle_timeout: Number(process.env.DB_IDLE_TIMEOUT ?? 10),
+    connect_timeout: 10,
     // Dates come back as ISO strings so the repository layer stays unchanged.
     types: {
       date: {

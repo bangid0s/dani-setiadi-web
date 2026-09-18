@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, setAdminPassword, createAdmin, deleteAdmin, countAdmins, findAdminByEmail } from "@/lib/auth";
 import { slugify } from "@/lib/ids";
@@ -40,6 +40,9 @@ function objectPathFromUrl(url: string | null): string | null {
 /** Every admin write refreshes the public cache (PRD §10.3 / §11.2). */
 function revalidateSite() {
   revalidatePath("/", "layout");
+  try {
+    revalidateTag("site", { expire: 0 });
+  } catch {}
 }
 
 const str = (fd: FormData, key: string) => String(fd.get(key) ?? "");

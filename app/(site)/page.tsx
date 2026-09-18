@@ -41,18 +41,32 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const settings = await getSettings();
-  const sections = await listSections({ visibleOnly: true });
+  const [
+    settings,
+    sections,
+    categories,
+    tools,
+    experiences,
+  ] = await Promise.all([
+    getSettings(),
+    listSections({ visibleOnly: true }),
+    listActiveCategories(),
+    listTools({ visibleOnly: true }),
+    listExperiences({ visibleOnly: true }),
+  ]);
 
   const hero = sections.find((s) => s.key === "hero") as Section<HeroContent> | undefined;
   const work = sections.find((s) => s.key === "work") as Section<WorkContent> | undefined;
   const about = sections.find((s) => s.key === "about") as Section<AboutContent> | undefined;
   const contact = sections.find((s) => s.key === "contact") as Section<ContactContent> | undefined;
 
-  const featured = work?.content.showFeatured ? await featuredProjects() : [];
-  const gallery = await galleryProjects(settings.gallery.includeFeatured);
+  const [featured, gallery, portrait, greetingSvg] = await Promise.all([
+    work?.content.showFeatured ? featuredProjects() : Promise.resolve([]),
+    galleryProjects(settings.gallery.includeFeatured),
+    getMedia(hero?.content.portraitId),
+    getMedia(hero?.content.greetingSvgId),
+  ]);
   const items = await toGalleryItems(gallery);
-  const categories = await listActiveCategories();
 
   const wa = whatsappUrl(settings.whatsappE164, settings.whatsappMessage);
   const mail = mailtoUrl(settings.contactEmail);
@@ -65,24 +79,22 @@ export default async function HomePage() {
     name: hero?.content.displayName ?? "Dani Setiadi",
     jobTitle: hero?.content.roleLine ?? "Graphic Designer & Illustrator",
     address: { "@type": "PostalAddress", addressLocality: "Semarang", addressCountry: "ID" },
-    image: hero?.content.portraitId
-      ? ((await getMedia(hero.content.portraitId))?.storagePath ?? undefined)
-      : undefined,
+    image: portrait?.storagePath ?? portrait?.originalUrl ?? undefined,
     email: settings.contactEmail || undefined,
     sameAs: settings.socialLinks.map((s) => s.url),
   };
 
   // GLB-01 — chapters render in the admin-defined order; hidden ones are not
   // rendered at all.
-  const chapters = await Promise.all(sections.map(async (section) => {
+  const chapters = sections.map((section) => {
     switch (section.key) {
       case "hero":
         return (
           <Hero
             key="hero"
             section={section as Section<HeroContent>}
-            portrait={await getMedia((section.content as HeroContent).portraitId)}
-            greetingSvg={await getMedia((section.content as HeroContent).greetingSvgId)}
+            portrait={portrait}
+            greetingSvg={greetingSvg}
           />
         );
       case "work": {
@@ -128,8 +140,8 @@ export default async function HomePage() {
           <About
             key="about"
             section={section as Section<AboutContent>}
-            tools={await listTools({ visibleOnly: true })}
-            experiences={await listExperiences({ visibleOnly: true })}
+            tools={tools}
+            experiences={experiences}
             settings={settings}
             availabilityHref={availHref}
           />
@@ -139,7 +151,7 @@ export default async function HomePage() {
       default:
         return null;
     }
-  }));
+  });
 
   return (
     <>

@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { sql, parseJson, toBool } from "@/lib/db";
 import { slugify } from "@/lib/ids";
 import { getMedia, getMediaMany } from "@/lib/repo/media";
@@ -21,22 +22,29 @@ type Row = Record<string, unknown>;
  * layout, in generateMetadata and again in the component pays for three round
  * trips to the database instead of one.
  */
+const cachedFetchSections = unstable_cache(
+  async (): Promise<Section[]> => {
+    const rows = await sql<Row[]>`select * from sections order by sort_order asc`;
+    const all = rows.map((r) => ({
+      key: r.key as SectionKey,
+      label: String(r.label ?? ""),
+      sortOrder: Number(r.sort_order),
+      isVisible: toBool(r.is_visible),
+      content: parseSectionContent(String(r.key), parseJson(r.content, {})),
+      index: 0,
+    })) as Section[];
+
+    let n = 0;
+    for (const s of all) if (s.isVisible) s.index = ++n;
+
+    return all;
+  },
+  ["sections"],
+  { tags: ["site", "sections"], revalidate: 3600 }
+);
+
 const fetchSections = cache(async (): Promise<Section[]> => {
-  const rows = await sql<Row[]>`select * from sections order by sort_order asc`;
-  const all = rows.map((r) => ({
-    key: r.key as SectionKey,
-    label: String(r.label ?? ""),
-    sortOrder: Number(r.sort_order),
-    isVisible: toBool(r.is_visible),
-    content: parseSectionContent(String(r.key), parseJson(r.content, {})),
-    index: 0,
-  })) as Section[];
-
-  // GLB-02 — index numbers are generated from the *visible* order.
-  let n = 0;
-  for (const s of all) if (s.isVisible) s.index = ++n;
-
-  return all;
+  return cachedFetchSections();
 });
 
 export async function listSections(opts: { visibleOnly?: boolean } = {}): Promise<Section[]> {
@@ -87,36 +95,44 @@ export async function reorderSections(keys: string[]): Promise<void> {
 
 const DEFAULT_UI_LABELS: UiLabels = uiLabelsSchema.parse({});
 
+const cachedGetSettings = unstable_cache(
+  async (): Promise<SiteSettings> => {
+    const [r = {} as Row] = await sql<Row[]>`select * from site_settings where id = 1`;
+    const availability = availabilitySchema.parse(parseJson(r.availability, {}));
+    const gallery = gallerySettingsSchema.parse(parseJson(r.gallery_settings, {}));
+    const stored = parseJson<Partial<UiLabels> & { showFloatingWhatsApp?: boolean }>(r.ui_labels, {});
+    const uiLabels = uiLabelsSchema.parse(stored);
+
+    const [ogImage, favicon] = await Promise.all([
+      getMedia(r.og_image_id as string),
+      getMedia(r.favicon_id as string),
+    ]);
+
+    return {
+      siteTitlePattern: String(r.site_title_pattern ?? "%s — Dani Setiadi"),
+      metaDescription: String(r.meta_description ?? ""),
+      ogImageId: (r.og_image_id as string) ?? null,
+      ogImage,
+      faviconId: (r.favicon_id as string) ?? null,
+      favicon,
+      cvPath: (r.cv_path as string) ?? null,
+      cvFilename: (r.cv_filename as string) ?? null,
+      contactEmail: String(r.contact_email ?? ""),
+      whatsappE164: String(r.whatsapp_e164 ?? ""),
+      whatsappMessage: String(r.whatsapp_message ?? ""),
+      socialLinks: parseJson<SocialLink[]>(r.social_links, []),
+      availability: availability as Availability,
+      gallery: gallery as GallerySettings,
+      uiLabels: { ...DEFAULT_UI_LABELS, ...uiLabels },
+      showFloatingWhatsApp: stored.showFloatingWhatsApp === true,
+    };
+  },
+  ["site-settings"],
+  { tags: ["site", "settings"], revalidate: 3600 }
+);
+
 export const getSettings = cache(async (): Promise<SiteSettings> => {
-  const [r = {} as Row] = await sql<Row[]>`select * from site_settings where id = 1`;
-  const availability = availabilitySchema.parse(parseJson(r.availability, {}));
-  const gallery = gallerySettingsSchema.parse(parseJson(r.gallery_settings, {}));
-  const stored = parseJson<Partial<UiLabels> & { showFloatingWhatsApp?: boolean }>(r.ui_labels, {});
-  const uiLabels = uiLabelsSchema.parse(stored);
-
-  const [ogImage, favicon] = await Promise.all([
-    getMedia(r.og_image_id as string),
-    getMedia(r.favicon_id as string),
-  ]);
-
-  return {
-    siteTitlePattern: String(r.site_title_pattern ?? "%s — Dani Setiadi"),
-    metaDescription: String(r.meta_description ?? ""),
-    ogImageId: (r.og_image_id as string) ?? null,
-    ogImage,
-    faviconId: (r.favicon_id as string) ?? null,
-    favicon,
-    cvPath: (r.cv_path as string) ?? null,
-    cvFilename: (r.cv_filename as string) ?? null,
-    contactEmail: String(r.contact_email ?? ""),
-    whatsappE164: String(r.whatsapp_e164 ?? ""),
-    whatsappMessage: String(r.whatsapp_message ?? ""),
-    socialLinks: parseJson<SocialLink[]>(r.social_links, []),
-    availability: availability as Availability,
-    gallery: gallery as GallerySettings,
-    uiLabels: { ...DEFAULT_UI_LABELS, ...uiLabels },
-    showFloatingWhatsApp: stored.showFloatingWhatsApp === true,
-  };
+  return cachedGetSettings();
 });
 
 export async function updateSettings(patch: Record<string, unknown>): Promise<void> {
@@ -152,18 +168,26 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<vo
 
 // --- Tools ------------------------------------------------------------------
 
+const cachedFetchTools = unstable_cache(
+  async (): Promise<Tool[]> => {
+    const rows = await sql<Row[]>`select * from tools order by sort_order asc`;
+    const icons = await getMediaMany(rows.map((r) => r.icon_media_id as string).filter(Boolean));
+    return rows.map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      iconMediaId: (r.icon_media_id as string) ?? null,
+      icon: r.icon_media_id ? (icons.get(String(r.icon_media_id)) ?? null) : null,
+      url: (r.url as string) ?? null,
+      sortOrder: Number(r.sort_order),
+      isVisible: toBool(r.is_visible),
+    }));
+  },
+  ["tools"],
+  { tags: ["site", "tools"], revalidate: 3600 }
+);
+
 const fetchTools = cache(async (): Promise<Tool[]> => {
-  const rows = await sql<Row[]>`select * from tools order by sort_order asc`;
-  const icons = await getMediaMany(rows.map((r) => r.icon_media_id as string).filter(Boolean));
-  return rows.map((r) => ({
-    id: String(r.id),
-    name: String(r.name),
-    iconMediaId: (r.icon_media_id as string) ?? null,
-    icon: r.icon_media_id ? (icons.get(String(r.icon_media_id)) ?? null) : null,
-    url: (r.url as string) ?? null,
-    sortOrder: Number(r.sort_order),
-    isVisible: toBool(r.is_visible),
-  }));
+  return cachedFetchTools();
 });
 
 export async function listTools(opts: { visibleOnly?: boolean } = {}): Promise<Tool[]> {
@@ -198,22 +222,30 @@ export const reorderTools = (ids: string[]) => reorder("tools", ids);
 
 // --- Experience -------------------------------------------------------------
 
+const cachedFetchExperiences = unstable_cache(
+  async (): Promise<Experience[]> => {
+    const rows = await sql<Row[]>`select * from experiences order by sort_order asc`;
+    return rows.map((r) => ({
+      id: String(r.id),
+      company: String(r.company),
+      role: String(r.role ?? ""),
+      workType: String(r.work_type ?? "Remote"),
+      startYear: r.start_year === null ? null : Number(r.start_year),
+      startMonth: r.start_month === null ? null : Number(r.start_month),
+      endYear: r.end_year === null ? null : Number(r.end_year),
+      endMonth: r.end_month === null ? null : Number(r.end_month),
+      isCurrent: toBool(r.is_current),
+      description: String(r.description ?? ""),
+      sortOrder: Number(r.sort_order),
+      isVisible: toBool(r.is_visible),
+    }));
+  },
+  ["experiences"],
+  { tags: ["site", "experiences"], revalidate: 3600 }
+);
+
 const fetchExperiences = cache(async (): Promise<Experience[]> => {
-  const rows = await sql<Row[]>`select * from experiences order by sort_order asc`;
-  return rows.map((r) => ({
-    id: String(r.id),
-    company: String(r.company),
-    role: String(r.role ?? ""),
-    workType: String(r.work_type ?? "Remote"),
-    startYear: r.start_year === null ? null : Number(r.start_year),
-    startMonth: r.start_month === null ? null : Number(r.start_month),
-    endYear: r.end_year === null ? null : Number(r.end_year),
-    endMonth: r.end_month === null ? null : Number(r.end_month),
-    isCurrent: toBool(r.is_current),
-    description: String(r.description ?? ""),
-    sortOrder: Number(r.sort_order),
-    isVisible: toBool(r.is_visible),
-  }));
+  return cachedFetchExperiences();
 });
 
 export async function listExperiences(
@@ -288,9 +320,17 @@ function rowToCategory(r: Row): Category {
   };
 }
 
+const cachedFetchCategories = unstable_cache(
+  async (): Promise<Category[]> => {
+    const rows = await sql<Row[]>`select * from categories order by sort_order asc`;
+    return rows.map(rowToCategory);
+  },
+  ["categories"],
+  { tags: ["site", "categories"], revalidate: 3600 }
+);
+
 const fetchCategories = cache(async (): Promise<Category[]> => {
-  const rows = await sql<Row[]>`select * from categories order by sort_order asc`;
-  return rows.map(rowToCategory);
+  return cachedFetchCategories();
 });
 
 export async function listCategories(
@@ -300,16 +340,24 @@ export async function listCategories(
   return opts.visibleOnly ? all.filter((c) => c.isVisible) : all;
 }
 
+const cachedListActiveCategories = unstable_cache(
+  async (): Promise<Category[]> => {
+    const rows = await sql<Row[]>`
+      select c.* from categories c
+      where c.is_visible and exists (
+        select 1 from project_categories pc
+        join projects p on p.id = pc.project_id
+        where pc.category_id = c.id and p.status = 'published' and p.deleted_at is null)
+      order by c.sort_order asc`;
+    return rows.map(rowToCategory);
+  },
+  ["active-categories"],
+  { tags: ["site", "categories", "projects"], revalidate: 3600 }
+);
+
 /** Categories that have at least one published project (PRD §7.3.3 filters). */
 export const listActiveCategories = cache(async (): Promise<Category[]> => {
-  const rows = await sql<Row[]>`
-    select c.* from categories c
-    where c.is_visible and exists (
-      select 1 from project_categories pc
-      join projects p on p.id = pc.project_id
-      where pc.category_id = c.id and p.status = 'published' and p.deleted_at is null)
-    order by c.sort_order asc`;
-  return rows.map(rowToCategory);
+  return cachedListActiveCategories();
 });
 
 export async function createCategory(name: string, isVisible = true): Promise<string> {

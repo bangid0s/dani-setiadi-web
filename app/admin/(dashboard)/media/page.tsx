@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/admin/PageHeader";
 import { MediaLibrary } from "@/components/admin/MediaLibrary";
-import { listMedia, mediaUsage } from "@/lib/repo/media";
+import { listMedia, mediaUsageMany } from "@/lib/repo/media";
 
 export default async function MediaPage({
   searchParams,
@@ -15,9 +15,7 @@ export default async function MediaPage({
     : "all";
 
   const { items, total } = await listMedia({ source, search: sp.q, limit: 120 });
-  const usage = Object.fromEntries(
-    await Promise.all(items.map(async (m) => [m.id, await mediaUsage(m.id)] as const)),
-  );
+  const usage = await mediaUsageMany(items.map((m) => m.id));
 
   return (
     <>

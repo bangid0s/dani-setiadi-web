@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { sql, toBool } from "@/lib/db";
 import { getMedia, getMediaMany } from "@/lib/repo/media";
 import {
@@ -107,7 +108,7 @@ export type ListProjectsOptions = {
   sort?: "manual" | "newest";
 };
 
-export async function listProjects(
+async function rawListProjects(
   opts: ListProjectsOptions = {},
 ): Promise<{ items: Project[]; total: number }> {
   const byStatus =
@@ -134,19 +135,35 @@ export async function listProjects(
       ? sql`order by coalesce(p.published_at, p.created_at) desc`
       : sql`order by p.sort_order asc, p.created_at desc`;
 
-  const [countRow] = await sql<Row[]>`
-    select count(*)::int as n from projects p
-    where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}`;
+  const [[countRow], rows] = await Promise.all([
+    sql<Row[]>`
+      select count(*)::int as n from projects p
+      where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}`,
+    sql<Row[]>`
+      select p.* from projects p
+      where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}
+      ${order} limit ${opts.limit ?? 500} offset ${opts.offset ?? 0}`,
+  ]);
 
-  const rows = await sql<Row[]>`
-    select p.* from projects p
-    where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}
-    ${order} limit ${opts.limit ?? 500} offset ${opts.offset ?? 0}`;
-
-  return { items: await hydrateMany(rows), total: Number(countRow.n) };
+  return { items: await hydrateMany(rows), total: Number(countRow?.n ?? 0) };
 }
 
-export async function getProjectBySlug(
+const cachedListProjects = unstable_cache(
+  (optsJson: string) => rawListProjects(JSON.parse(optsJson)),
+  ["list-projects"],
+  { tags: ["site", "projects"], revalidate: 3600 }
+);
+
+export async function listProjects(
+  opts: ListProjectsOptions = {},
+): Promise<{ items: Project[]; total: number }> {
+  if (opts.status === "published") {
+    return cachedListProjects(JSON.stringify(opts));
+  }
+  return rawListProjects(opts);
+}
+
+async function rawGetProjectBySlug(
   slug: string,
   opts: { publishedOnly?: boolean } = {},
 ): Promise<Project | null> {
@@ -155,6 +172,22 @@ export async function getProjectBySlug(
     select * from projects where slug = ${slug} and deleted_at is null ${onlyPublished}`;
   if (rows.length === 0) return null;
   return (await hydrateMany(rows, { gallery: true }))[0] ?? null;
+}
+
+const cachedGetProjectBySlug = unstable_cache(
+  (slug: string) => rawGetProjectBySlug(slug, { publishedOnly: true }),
+  ["project-by-slug"],
+  { tags: ["site", "projects"], revalidate: 3600 }
+);
+
+export async function getProjectBySlug(
+  slug: string,
+  opts: { publishedOnly?: boolean } = {},
+): Promise<Project | null> {
+  if (opts.publishedOnly) {
+    return cachedGetProjectBySlug(slug);
+  }
+  return rawGetProjectBySlug(slug, opts);
 }
 
 export async function getProjectById(id: string): Promise<Project | null> {

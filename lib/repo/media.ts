@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { sql, parseJson, toBool } from "@/lib/db";
 import type { Media } from "@/lib/types";
 
@@ -32,22 +33,44 @@ export function rowToMedia(r: Row | undefined): Media | null {
   };
 }
 
+const cachedFetchMedia = unstable_cache(
+  async (id: string): Promise<Media | null> => {
+    const rows = await sql<Row[]>`
+      select * from media where id = ${id} and deleted_at is null`;
+    return rowToMedia(rows[0]);
+  },
+  ["media-by-id"],
+  { tags: ["site", "media"], revalidate: 3600 }
+);
+
 export const getMedia = cache(async (id: string | null | undefined): Promise<Media | null> => {
   if (!id) return null;
-  const rows = await sql<Row[]>`
-    select * from media where id = ${id} and deleted_at is null`;
-  return rowToMedia(rows[0]);
+  return cachedFetchMedia(id);
 });
+
+const cachedFetchMediaMany = unstable_cache(
+  async (sortedUniqueIds: string[]): Promise<Record<string, Media>> => {
+    if (sortedUniqueIds.length === 0) return {};
+    const rows = await sql<Row[]>`
+      select * from media where id in ${sql(sortedUniqueIds)} and deleted_at is null`;
+    const out: Record<string, Media> = {};
+    for (const row of rows) {
+      const m = rowToMedia(row);
+      if (m) out[m.id] = m;
+    }
+    return out;
+  },
+  ["media-many-by-ids"],
+  { tags: ["site", "media"], revalidate: 3600 }
+);
 
 export async function getMediaMany(ids: string[]): Promise<Map<string, Media>> {
   const out = new Map<string, Media>();
-  const unique = [...new Set(ids.filter(Boolean))];
+  const unique = [...new Set(ids.filter(Boolean))].sort();
   if (unique.length === 0) return out;
-  const rows = await sql<Row[]>`
-    select * from media where id in ${sql(unique)} and deleted_at is null`;
-  for (const row of rows) {
-    const m = rowToMedia(row);
-    if (m) out.set(m.id, m);
+  const records = await cachedFetchMediaMany(unique);
+  for (const [id, m] of Object.entries(records)) {
+    out.set(id, m);
   }
   return out;
 }
@@ -152,34 +175,57 @@ export async function softDeleteMedia(id: string): Promise<void> {
   await sql`update media set deleted_at = now() where id = ${id}`;
 }
 
-/** Where a media item is used — powers the "in use" warning before deleting. */
-export async function mediaUsage(id: string): Promise<string[]> {
-  const uses: string[] = [];
+/** Batched media usage lookup to prevent N+1 query storms. */
+export async function mediaUsageMany(ids: string[]): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {};
+  const unique = [...new Set(ids.filter(Boolean))];
+  for (const id of unique) out[id] = [];
+  if (unique.length === 0) return out;
 
-  const covers = await sql<Row[]>`
-    select title from projects where cover_media_id = ${id} and deleted_at is null`;
-  uses.push(...covers.map((r) => `Cover of “${r.title}”`));
+  const [covers, gallery, tools, [hero], [settings]] = await Promise.all([
+    sql<Row[]>`
+      select cover_media_id, title from projects
+      where cover_media_id in ${sql(unique)} and deleted_at is null`,
+    sql<Row[]>`
+      select pm.media_id, p.title from project_media pm
+      join projects p on p.id = pm.project_id
+      where pm.media_id in ${sql(unique)} and p.deleted_at is null`,
+    sql<Row[]>`
+      select icon_media_id, name from tools
+      where icon_media_id in ${sql(unique)} and deleted_at is null`,
+    sql<Row[]>`select content from sections where key = 'hero'`,
+    sql<Row[]>`select og_image_id, favicon_id from site_settings where id = 1`,
+  ]);
 
-  const gallery = await sql<Row[]>`
-    select p.title from project_media pm
-    join projects p on p.id = pm.project_id
-    where pm.media_id = ${id} and p.deleted_at is null`;
-  uses.push(...gallery.map((r) => `Gallery of “${r.title}”`));
-
-  const tools = await sql<Row[]>`select name from tools where icon_media_id = ${id}`;
-  uses.push(...tools.map((r) => `Tool icon “${r.name}”`));
-
-  const [hero] = await sql<Row[]>`select content from sections where key = 'hero'`;
+  for (const r of covers) {
+    const id = String(r.cover_media_id);
+    if (out[id]) out[id].push(`Cover of “${r.title}”`);
+  }
+  for (const r of gallery) {
+    const id = String(r.media_id);
+    if (out[id]) out[id].push(`Gallery of “${r.title}”`);
+  }
+  for (const r of tools) {
+    const id = String(r.icon_media_id);
+    if (out[id]) out[id].push(`Tool icon “${r.name}”`);
+  }
   if (hero) {
     const content = parseJson<{ portraitId?: string; greetingSvgId?: string }>(hero.content, {});
-    if (content.portraitId === id) uses.push("Hero portrait");
-    if (content.greetingSvgId === id) uses.push("Hero greeting lettering");
+    if (content.portraitId && out[content.portraitId]) out[content.portraitId].push("Hero portrait");
+    if (content.greetingSvgId && out[content.greetingSvgId]) out[content.greetingSvgId].push("Hero greeting lettering");
+  }
+  if (settings) {
+    const ogId = settings.og_image_id as string | undefined;
+    const favId = settings.favicon_id as string | undefined;
+    if (ogId && out[ogId]) out[ogId].push("Share image");
+    if (favId && out[favId]) out[favId].push("Favicon");
   }
 
-  const [settings] = await sql<Row[]>`
-    select og_image_id, favicon_id from site_settings where id = 1`;
-  if (settings?.og_image_id === id) uses.push("Share image");
-  if (settings?.favicon_id === id) uses.push("Favicon");
+  return out;
+}
 
-  return uses;
+/** Where a single media item is used. */
+export async function mediaUsage(id: string): Promise<string[]> {
+  const result = await mediaUsageMany([id]);
+  return result[id] ?? [];
 }
