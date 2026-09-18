@@ -41,31 +41,21 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const [
-    settings,
-    sections,
-    categories,
-    tools,
-    experiences,
-  ] = await Promise.all([
-    getSettings(),
-    listSections({ visibleOnly: true }),
-    listActiveCategories(),
-    listTools({ visibleOnly: true }),
-    listExperiences({ visibleOnly: true }),
-  ]);
+  const settings = await getSettings();
+  const sections = await listSections({ visibleOnly: true });
+  const categories = await listActiveCategories();
+  const tools = await listTools({ visibleOnly: true });
+  const experiences = await listExperiences({ visibleOnly: true });
 
   const hero = sections.find((s) => s.key === "hero") as Section<HeroContent> | undefined;
   const work = sections.find((s) => s.key === "work") as Section<WorkContent> | undefined;
   const about = sections.find((s) => s.key === "about") as Section<AboutContent> | undefined;
   const contact = sections.find((s) => s.key === "contact") as Section<ContactContent> | undefined;
 
-  const [featured, gallery, portrait, greetingSvg] = await Promise.all([
-    work?.content.showFeatured ? featuredProjects() : Promise.resolve([]),
-    galleryProjects(settings.gallery.includeFeatured),
-    getMedia(hero?.content.portraitId),
-    getMedia(hero?.content.greetingSvgId),
-  ]);
+  const featured = work?.content.showFeatured ? await featuredProjects() : [];
+  const gallery = await galleryProjects(settings.gallery.includeFeatured);
+  const portrait = await getMedia(hero?.content.portraitId);
+  const greetingSvg = await getMedia(hero?.content.greetingSvgId);
   const items = await toGalleryItems(gallery);
 
   const wa = whatsappUrl(settings.whatsappE164, settings.whatsappMessage);

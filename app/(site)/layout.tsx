@@ -13,10 +13,8 @@ import type { HeroContent } from "@/lib/types";
 export const revalidate = 300;
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
-  const [settings, sections] = await Promise.all([
-    getSettings(),
-    listSections({ visibleOnly: true }),
-  ]);
+  const settings = await getSettings();
+  const sections = await listSections({ visibleOnly: true });
   const hero = sections.find((s) => s.key === "hero");
   const wordmark = hero ? (hero.content as HeroContent).displayName : "Dani Setiadi";
 

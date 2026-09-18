@@ -23,12 +23,10 @@ export default async function WorkPage({
   searchParams: Promise<{ category?: string }>;
 }) {
   const { category } = await searchParams;
-  const [settings, sections, rawProjects, categories] = await Promise.all([
-    getSettings(),
-    listSections(),
-    galleryProjects(true),
-    listActiveCategories(),
-  ]);
+  const settings = await getSettings();
+  const sections = await listSections();
+  const rawProjects = await galleryProjects(true);
+  const categories = await listActiveCategories();
   const section = sections.find((s) => s.key === "work") as Section<WorkContent> | undefined;
   const c = section?.content;
 

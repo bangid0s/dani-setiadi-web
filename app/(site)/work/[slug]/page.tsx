@@ -40,11 +40,9 @@ export async function generateMetadata({
 export default async function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   // PROJ-01 — draft and archived projects return 404.
-  const [project, settings, { next }] = await Promise.all([
-    getProjectBySlug(slug, { publishedOnly: true }),
-    getSettings(),
-    projectNeighbours(slug),
-  ]);
+  const project = await getProjectBySlug(slug, { publishedOnly: true });
+  const settings = await getSettings();
+  const { next } = await projectNeighbours(slug);
   if (!project) notFound();
   const cover = project.cover;
   const coverIsVideo = cover?.source === "youtube";
