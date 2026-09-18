@@ -85,7 +85,6 @@ export function MediaLibrary({
           {[
             ["all", "All"],
             ["upload", "Uploads"],
-            ["url", "Links"],
             ["youtube", "YouTube"],
           ].map(([value, label]) => (
             <button

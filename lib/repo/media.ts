@@ -86,7 +86,7 @@ export async function listMedia(
   opts: ListMediaOptions = {},
 ): Promise<{ items: Media[]; total: number }> {
   const bySource =
-    opts.source && opts.source !== "all" ? sql`and source = ${opts.source}` : sql``;
+    opts.source && opts.source !== "all" ? sql`and source = ${opts.source}` : sql`and source != 'url'`;
   const q = opts.search?.trim() ? `%${opts.search.trim().toLowerCase()}%` : null;
   const bySearch = q
     ? sql`and (lower(coalesce(title,'')) like ${q}
