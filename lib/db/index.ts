@@ -4,17 +4,15 @@ import postgres from "postgres";
 /**
  * Postgres connection for the whole app.
  *
- * Use Supabase's **session pooler** — the pooler host on port **5432**.
+ * Use Supabase's **transaction pooler** — the pooler host on port **6543**.
  *
- * Supabase also offers a transaction pooler on port 6543. Do not use it here:
- * postgres.js pipelines queries onto a connection, and transaction mode cannot
- * interleave them safely, so anything past two concurrent queries stalls
- * indefinitely rather than erroring. Session mode behaves like a normal
- * Postgres connection and handles the app's concurrency comfortably.
+ * We automatically upgrade connections mapped to the session pooler (5432) to 6543
+ * to prevent connection exhaustion on Vercel Serverless.
+ * Supavisor now supports interleaved query pipelining with `prepare: false`.
  *
  * The pool is deliberately small and gives idle connections back quickly:
- * session mode holds a server-side connection for as long as the client keeps
- * one, and a serverless platform may run many instances at once.
+ * transaction mode holds a server-side connection for only the duration of a query,
+ * allowing hundreds of Serverless functions to safely share a small backend pool.
  */
 declare global {
   var __daniSql: postgres.Sql | undefined;
@@ -23,7 +21,7 @@ declare global {
 const TRANSACTION_POOLER_PORT = "6543";
 
 function connectionString(): string {
-  const url = process.env.DATABASE_URL;
+  let url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
       "DATABASE_URL is not set. Copy .env.example to .env.local and paste your " +
@@ -31,28 +29,18 @@ function connectionString(): string {
         "string → Session pooler).",
     );
   }
-  return url;
-}
-
-function usesTransactionPooler(url: string): boolean {
-  try {
-    return new URL(url).port === TRANSACTION_POOLER_PORT;
-  } catch {
-    return false;
+  // Automatically upgrade to Supabase Transaction Pooler (port 6543)
+  // This is required for Vercel Serverless to prevent connection exhaustion.
+  // Supavisor now supports pipelined queries safely with prepare: false.
+  if (url.includes("pooler.supabase.com") && url.includes(":5432/")) {
+    url = url.replace(":5432/", ":6543/");
   }
+  
+  return url;
 }
 
 function create(): postgres.Sql {
   const url = connectionString();
-  const transactionMode = usesTransactionPooler(url);
-
-  if (transactionMode) {
-    console.warn(
-      "[db] DATABASE_URL points at the transaction pooler (port 6543). " +
-        "Queries can stall there. Switch to the session pooler (port 5432) — " +
-        "same host, same credentials, just the other port.",
-    );
-  }
 
   const defaultMax = process.env.NODE_ENV === "production" ? 2 : 10;
 
