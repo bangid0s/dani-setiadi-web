@@ -191,7 +191,7 @@ export async function mediaUsageMany(ids: string[]): Promise<Record<string, stri
       where pm.media_id in ${sql(unique)} and p.deleted_at is null`;
   const tools = await sql<Row[]>`
       select icon_media_id, name from tools
-      where icon_media_id in ${sql(unique)} and deleted_at is null`;
+      where icon_media_id in ${sql(unique)}`;
   const [hero] = await sql<Row[]>`select content from sections where key = 'hero'`;
   const [settings] = await sql<Row[]>`select og_image_id, favicon_id from site_settings where id = 1`;
 

@@ -5,11 +5,12 @@ import { BulkUpload } from "@/components/admin/BulkUpload";
 import { listProjects } from "@/lib/repo/projects";
 import { listCategories } from "@/lib/repo/content";
 import type { ProjectStatus } from "@/lib/types";
+import { FormSuccess } from "@/components/admin/form";
 
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; category?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; category?: string; q?: string; msg?: string }>;
 }) {
   const sp = await searchParams;
   const status = (["draft", "published", "archived"] as const).includes(sp.status as ProjectStatus)
@@ -30,6 +31,7 @@ export default async function ProjectsPage({
         actions={<NewProjectButton />}
       />
       <div className="space-y-6">
+        {sp.msg && <FormSuccess message={sp.msg} />}
         <ProjectsTable
           projects={items}
           categories={await listCategories()}

@@ -446,6 +446,10 @@ export async function bulkProjectAction(formData: FormData): Promise<void> {
   }
   revalidateSite();
   revalidatePath("/admin/projects");
+  const redir = str(formData, "redirect");
+  if (redir) {
+    redirect(redir);
+  }
 }
 
 export async function toggleFeaturedAction(formData: FormData): Promise<void> {

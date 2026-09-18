@@ -499,6 +499,7 @@ function DangerZone({ project }: { project: Project }) {
         {confirming ? (
           <form action={bulkProjectAction} className="flex items-center gap-2">
             <input type="hidden" name="selected" value={project.id} />
+            <input type="hidden" name="redirect" value="/admin/projects?msg=Project+deleted" />
             <span className="text-[13px] text-ink">Delete “{project.title}”?</span>
             <button
               type="submit"
