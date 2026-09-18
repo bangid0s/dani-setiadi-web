@@ -36,20 +36,28 @@ function baseProject(r: Row): Omit<Project, "cover" | "categories" | "tools" | "
   };
 }
 
-/** Attaches covers, categories and tools to many rows with a fixed query count. */
+/** Attaches covers, categories, tools, gallery, and links to many rows concurrently. */
 async function hydrateMany(rows: Row[], opts: { gallery?: boolean } = {}): Promise<Project[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => String(r.id));
 
-  const covers = await getMediaMany(rows.map((r) => r.cover_media_id as string).filter(Boolean));
-  const catRows = await sql<Row[]>`
-    select pc.project_id, c.* from project_categories pc
-    join categories c on c.id = pc.category_id
-    where pc.project_id in ${sql(ids)} order by c.sort_order asc`;
-  const toolRows = await sql<Row[]>`
-    select pt.project_id, t.* from project_tools pt
-    join tools t on t.id = pt.tool_id
-    where pt.project_id in ${sql(ids)} order by t.sort_order asc`;
+  const [covers, catRows, toolRows, galleryRows, linkRows] = await Promise.all([
+    getMediaMany(rows.map((r) => r.cover_media_id as string).filter(Boolean)),
+    sql<Row[]>`
+      select pc.project_id, c.* from project_categories pc
+      join categories c on c.id = pc.category_id
+      where pc.project_id in ${sql(ids)} order by c.sort_order asc`,
+    sql<Row[]>`
+      select pt.project_id, t.* from project_tools pt
+      join tools t on t.id = pt.tool_id
+      where pt.project_id in ${sql(ids)} order by t.sort_order asc`,
+    opts.gallery
+      ? sql<Row[]>`select * from project_media where project_id in ${sql(ids)} order by sort_order asc`
+      : Promise.resolve([]),
+    opts.gallery
+      ? sql<Row[]>`select * from project_links where project_id in ${sql(ids)} order by sort_order asc`
+      : Promise.resolve([]),
+  ]);
 
   const catsByProject = new Map<string, Category[]>();
   for (const row of catRows) {
@@ -64,7 +72,11 @@ async function hydrateMany(rows: Row[], opts: { gallery?: boolean } = {}): Promi
     catsByProject.set(String(row.project_id), list);
   }
 
-  const toolIcons = await getMediaMany(toolRows.map((r) => r.icon_media_id as string).filter(Boolean));
+  const [toolIcons, galleryMedia] = await Promise.all([
+    getMediaMany(toolRows.map((r) => r.icon_media_id as string).filter(Boolean)),
+    opts.gallery ? getMediaMany(galleryRows.map((r) => String(r.media_id))) : Promise.resolve(new Map()),
+  ]);
+
   const toolsByProject = new Map<string, Tool[]>();
   for (const row of toolRows) {
     const list = toolsByProject.get(String(row.project_id)) ?? [];
@@ -80,19 +92,43 @@ async function hydrateMany(rows: Row[], opts: { gallery?: boolean } = {}): Promi
     toolsByProject.set(String(row.project_id), list);
   }
 
-  return Promise.all(
-    rows.map(async (r) => {
-      const id = String(r.id);
-      return {
-        ...baseProject(r),
-        cover: r.cover_media_id ? (covers.get(String(r.cover_media_id)) ?? null) : null,
-        categories: catsByProject.get(id) ?? [],
-        tools: toolsByProject.get(id) ?? [],
-        gallery: opts.gallery ? await projectGallery(id) : [],
-        links: opts.gallery ? await projectLinks(id) : [],
-      };
-    }),
-  );
+  const galleryByProject = new Map<string, any[]>();
+  for (const row of galleryRows) {
+    const list = galleryByProject.get(String(row.project_id)) ?? [];
+    list.push({
+      id: String(row.id),
+      mediaId: String(row.media_id),
+      media: galleryMedia.get(String(row.media_id)) ?? null,
+      sortOrder: Number(row.sort_order),
+      width: row.width ?? "full",
+      caption: row.caption ?? null,
+    });
+    galleryByProject.set(String(row.project_id), list);
+  }
+
+  const linksByProject = new Map<string, any[]>();
+  for (const row of linkRows) {
+    const list = linksByProject.get(String(row.project_id)) ?? [];
+    list.push({
+      id: String(row.id),
+      label: String(row.label),
+      url: String(row.url),
+      sortOrder: Number(row.sort_order),
+    });
+    linksByProject.set(String(row.project_id), list);
+  }
+
+  return rows.map((r) => {
+    const id = String(r.id);
+    return {
+      ...baseProject(r),
+      cover: r.cover_media_id ? (covers.get(String(r.cover_media_id)) ?? null) : null,
+      categories: catsByProject.get(id) ?? [],
+      tools: toolsByProject.get(id) ?? [],
+      gallery: galleryByProject.get(id) ?? [],
+      links: linksByProject.get(id) ?? [],
+    };
+  });
 }
 
 export type ListProjectsOptions = {
