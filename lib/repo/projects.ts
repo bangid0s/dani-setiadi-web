@@ -41,17 +41,15 @@ async function hydrateMany(rows: Row[], opts: { gallery?: boolean } = {}): Promi
   if (rows.length === 0) return [];
   const ids = rows.map((r) => String(r.id));
 
-  const [covers, catRows, toolRows] = await Promise.all([
-    getMediaMany(rows.map((r) => r.cover_media_id as string).filter(Boolean)),
-    sql<Row[]>`
-      select pc.project_id, c.* from project_categories pc
-      join categories c on c.id = pc.category_id
-      where pc.project_id in ${sql(ids)} order by c.sort_order asc`,
-    sql<Row[]>`
-      select pt.project_id, t.* from project_tools pt
-      join tools t on t.id = pt.tool_id
-      where pt.project_id in ${sql(ids)} order by t.sort_order asc`,
-  ]);
+  const covers = await getMediaMany(rows.map((r) => r.cover_media_id as string).filter(Boolean));
+  const catRows = await sql<Row[]>`
+    select pc.project_id, c.* from project_categories pc
+    join categories c on c.id = pc.category_id
+    where pc.project_id in ${sql(ids)} order by c.sort_order asc`;
+  const toolRows = await sql<Row[]>`
+    select pt.project_id, t.* from project_tools pt
+    join tools t on t.id = pt.tool_id
+    where pt.project_id in ${sql(ids)} order by t.sort_order asc`;
 
   const catsByProject = new Map<string, Category[]>();
   for (const row of catRows) {
@@ -135,15 +133,14 @@ async function rawListProjects(
       ? sql`order by coalesce(p.published_at, p.created_at) desc`
       : sql`order by p.sort_order asc, p.created_at desc`;
 
-  const [[countRow], rows] = await Promise.all([
-    sql<Row[]>`
-      select count(*)::int as n from projects p
-      where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}`,
-    sql<Row[]>`
-      select p.* from projects p
-      where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}
-      ${order} limit ${opts.limit ?? 500} offset ${opts.offset ?? 0}`,
-  ]);
+  const [countRow] = await sql<Row[]>`
+    select count(*)::int as n from projects p
+    where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}`;
+
+  const rows = await sql<Row[]>`
+    select p.* from projects p
+    where p.deleted_at is null ${byStatus} ${byCategory} ${bySearch} ${byFeatured}
+    ${order} limit ${opts.limit ?? 500} offset ${opts.offset ?? 0}`;
 
   return { items: await hydrateMany(rows), total: Number(countRow?.n ?? 0) };
 }

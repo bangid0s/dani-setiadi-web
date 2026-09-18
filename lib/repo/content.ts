@@ -103,10 +103,8 @@ const cachedGetSettings = unstable_cache(
     const stored = parseJson<Partial<UiLabels> & { showFloatingWhatsApp?: boolean }>(r.ui_labels, {});
     const uiLabels = uiLabelsSchema.parse(stored);
 
-    const [ogImage, favicon] = await Promise.all([
-      getMedia(r.og_image_id as string),
-      getMedia(r.favicon_id as string),
-    ]);
+    const ogImage = await getMedia(r.og_image_id as string);
+    const favicon = await getMedia(r.favicon_id as string);
 
     return {
       siteTitlePattern: String(r.site_title_pattern ?? "%s — Dani Setiadi"),

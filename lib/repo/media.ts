@@ -182,20 +182,18 @@ export async function mediaUsageMany(ids: string[]): Promise<Record<string, stri
   for (const id of unique) out[id] = [];
   if (unique.length === 0) return out;
 
-  const [covers, gallery, tools, [hero], [settings]] = await Promise.all([
-    sql<Row[]>`
+  const covers = await sql<Row[]>`
       select cover_media_id, title from projects
-      where cover_media_id in ${sql(unique)} and deleted_at is null`,
-    sql<Row[]>`
+      where cover_media_id in ${sql(unique)} and deleted_at is null`;
+  const gallery = await sql<Row[]>`
       select pm.media_id, p.title from project_media pm
       join projects p on p.id = pm.project_id
-      where pm.media_id in ${sql(unique)} and p.deleted_at is null`,
-    sql<Row[]>`
+      where pm.media_id in ${sql(unique)} and p.deleted_at is null`;
+  const tools = await sql<Row[]>`
       select icon_media_id, name from tools
-      where icon_media_id in ${sql(unique)} and deleted_at is null`,
-    sql<Row[]>`select content from sections where key = 'hero'`,
-    sql<Row[]>`select og_image_id, favicon_id from site_settings where id = 1`,
-  ]);
+      where icon_media_id in ${sql(unique)} and deleted_at is null`;
+  const [hero] = await sql<Row[]>`select content from sections where key = 'hero'`;
+  const [settings] = await sql<Row[]>`select og_image_id, favicon_id from site_settings where id = 1`;
 
   for (const r of covers) {
     const id = String(r.cover_media_id);
