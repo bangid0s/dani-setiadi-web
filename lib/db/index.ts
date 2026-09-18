@@ -63,7 +63,8 @@ function create(): postgres.Sql {
     // and avoid collision issues across connection re-use.
     prepare: false,
     max: Number(process.env.DB_POOL_MAX ?? defaultMax),
-    idle_timeout: Number(process.env.DB_IDLE_TIMEOUT ?? 10),
+    idle_timeout: Number(process.env.DB_IDLE_TIMEOUT ?? 2),
+    max_lifetime: 10,
     connect_timeout: 10,
     // Dates come back as ISO strings so the repository layer stays unchanged.
     types: {
