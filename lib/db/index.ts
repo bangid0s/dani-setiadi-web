@@ -57,6 +57,8 @@ function create(): postgres.Sql {
   const defaultMax = process.env.NODE_ENV === "production" ? 2 : 10;
 
   return postgres(url, {
+    // Supabase requires SSL for external connections
+    ssl: "require",
     // Prepared statements are disabled to ensure full compatibility with Supabase poolers
     // and avoid collision issues across connection re-use.
     prepare: false,
