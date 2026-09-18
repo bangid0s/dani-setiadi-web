@@ -6,5 +6,6 @@
     "app/api/media/import-url/route.ts": { "maxDuration": 60 },
     "app/api/media/youtube/route.ts": { "maxDuration": 60 },
     "app/api/projects/bulk/route.ts": { "maxDuration": 60 }
-  }
+  },
+  "regions": ["sin1"]
 }
