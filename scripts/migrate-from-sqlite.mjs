@@ -10,7 +10,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
 import { connect, migrate, loadEnv } from "./db.mjs";
 
 loadEnv();
@@ -30,7 +29,23 @@ if (!DRY && (!SUPABASE_URL || !SERVICE_KEY)) {
   process.exit(1);
 }
 
-const lite = new Database(dbFile, { readonly: true });
+let lite;
+try {
+  try {
+    const { DatabaseSync } = await import("node:sqlite");
+    lite = new DatabaseSync(dbFile, { readOnly: true });
+  } catch {
+    const Database = (await import("better-sqlite3")).default;
+    lite = new Database(dbFile, { readonly: true });
+  }
+} catch {
+  console.error(
+    "To run the SQLite migration, please install better-sqlite3 locally:\n" +
+      "  npm i --no-save better-sqlite3\n"
+  );
+  process.exit(1);
+}
+
 const sql = DRY ? null : connect();
 
 const all = (table) => lite.prepare(`select * from ${table}`).all();
