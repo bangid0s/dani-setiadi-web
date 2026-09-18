@@ -101,6 +101,7 @@ export function ToolsManager({ tools }: { tools: Tool[] }) {
       {adding || editing ? (
         <Card title={editing ? `Edit “${editing.name}”` : "Add a tool"}>
           <form action={action} className="space-y-4" key={editing?.id ?? "new"}>
+            <input type="hidden" name="redirect" value="/admin/tools?msg=Tool+saved" />
             {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
             <Field label="Name" name="name" defaultValue={editing?.name ?? ""} max={48} required />
             <MediaField
@@ -134,6 +135,7 @@ export function ToolsManager({ tools }: { tools: Tool[] }) {
           </form>
           {editing ? (
             <form action={deleteToolAction} className="mt-4 border-t border-line pt-4">
+              <input type="hidden" name="redirect" value="/admin/tools?msg=Tool+deleted" />
               <input type="hidden" name="id" value={editing.id} />
               <button
                 type="submit"

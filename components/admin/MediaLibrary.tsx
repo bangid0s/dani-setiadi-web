@@ -156,6 +156,7 @@ export function MediaLibrary({
 
             <div className="min-w-0 flex-1">
               <form action={action} className="space-y-4" key={selected.id}>
+                <input type="hidden" name="redirect" value="/admin/media?msg=Media+saved" />
                 <input type="hidden" name="id" value={selected.id} />
                 <Field label="Name" name="title" defaultValue={selected.title ?? ""} max={200} />
                 <Field
@@ -191,6 +192,7 @@ export function MediaLibrary({
                 )}
 
                 <form action={deleteMediaAction} className="mt-3">
+                  <input type="hidden" name="redirect" value="/admin/media?msg=Media+deleted" />
                   <input type="hidden" name="id" value={selected.id} />
                   <button
                     type="submit"

@@ -269,6 +269,8 @@ export async function saveToolAction(_prev: ActionState, formData: FormData): Pr
   else await createTool(parsed.data);
   revalidateSite();
   revalidatePath("/admin/tools");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
   return ok(id ? "Tool updated." : "Tool added.");
 }
 
@@ -277,6 +279,8 @@ export async function deleteToolAction(formData: FormData): Promise<void> {
   await deleteTool(str(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/tools");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
 }
 
 export async function reorderToolsAction(formData: FormData): Promise<void> {
@@ -311,6 +315,8 @@ export async function saveExperienceAction(
   else await createExperience(parsed.data);
   revalidateSite();
   revalidatePath("/admin/experience");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
   return ok(id ? "Entry updated." : "Entry added.");
 }
 
@@ -319,6 +325,8 @@ export async function deleteExperienceAction(formData: FormData): Promise<void> 
   await deleteExperience(str(formData, "id"));
   revalidateSite();
   revalidatePath("/admin/experience");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
 }
 
 export async function reorderExperiencesAction(formData: FormData): Promise<void> {
@@ -346,6 +354,8 @@ export async function saveCategoryAction(
   else await createCategory(parsed.data.name, parsed.data.isVisible);
   revalidateSite();
   revalidatePath("/admin/categories");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
   return ok(id ? "Category updated." : "Category added.");
 }
 
@@ -354,6 +364,8 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
   await deleteCategory(str(formData, "id"), str(formData, "moveTo") || null);
   revalidateSite();
   revalidatePath("/admin/categories");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
 }
 
 export async function reorderCategoriesAction(formData: FormData): Promise<void> {
@@ -520,6 +532,8 @@ export async function saveMediaMetaAction(
   await updateMediaMeta(str(formData, "id"), parsed.data);
   revalidateSite();
   revalidatePath("/admin/media");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
   return ok("Saved.");
 }
 
@@ -531,6 +545,8 @@ export async function deleteMediaAction(formData: FormData): Promise<void> {
   if (media?.storagePath) await deleteObject(MEDIA_BUCKET, media.storagePath);
   revalidateSite();
   revalidatePath("/admin/media");
+  const redir = str(formData, "redirect");
+  if (redir) redirect(redir);
 }
 
 // --- Account ----------------------------------------------------------------

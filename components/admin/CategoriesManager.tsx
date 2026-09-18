@@ -81,6 +81,7 @@ export function CategoriesManager({
 
       <Card title={editing ? `Rename “${editing.name}”` : "Add a category"}>
         <form action={action} className="space-y-4" key={editing?.id ?? "new"}>
+          <input type="hidden" name="redirect" value="/admin/categories?msg=Category+saved" />
           {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
           <Field label="Name" name="name" defaultValue={editing?.name ?? ""} max={48} required />
           <Toggle label="Show as a filter" name="isVisible" defaultChecked={editing?.isVisible ?? true} />
@@ -102,6 +103,7 @@ export function CategoriesManager({
       {deleting ? (
         <Card title={`Delete “${deleting.name}”?`}>
           <form action={deleteCategoryAction} className="space-y-4">
+            <input type="hidden" name="redirect" value="/admin/categories?msg=Category+deleted" />
             <input type="hidden" name="id" value={deleting.id} />
             <p className="text-[14px] text-ink">
               {counts[deleting.id] ? (

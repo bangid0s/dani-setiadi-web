@@ -125,6 +125,7 @@ export function ExperienceManager({ experiences }: { experiences: Experience[] }
       {adding || editing ? (
         <Card title={editing ? `Edit “${editing.company}”` : "Add an entry"}>
           <form action={action} className="space-y-4" key={editing?.id ?? "new"}>
+            <input type="hidden" name="redirect" value="/admin/experience?msg=Experience+saved" />
             {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
             <Field label="Company" name="company" defaultValue={editing?.company ?? ""} max={80} required />
             <div className="grid gap-4 sm:grid-cols-2">
@@ -195,6 +196,7 @@ export function ExperienceManager({ experiences }: { experiences: Experience[] }
           </form>
           {editing ? (
             <form action={deleteExperienceAction} className="mt-4 border-t border-line pt-4">
+              <input type="hidden" name="redirect" value="/admin/experience?msg=Experience+deleted" />
               <input type="hidden" name="id" value={editing.id} />
               <button type="submit" className="text-[13px] font-medium text-ember underline decoration-2 underline-offset-2 hover:opacity-80">
                 Delete this entry
