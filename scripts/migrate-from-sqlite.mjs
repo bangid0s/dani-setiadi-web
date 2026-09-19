@@ -166,39 +166,29 @@ async function main() {
       on conflict (id) do nothing`;
   }
 
+  const projectCategories = all("project_categories");
+  const projectTools = all("project_tools");
+  const projectMedia = all("project_media");
+  const projectLinks = all("project_links");
+
   for (const p of all("projects")) {
+    const cats = projectCategories.filter(r => r.project_id === p.id).map(r => r.category_id);
+    const tools = projectTools.filter(r => r.project_id === p.id).map(r => r.tool_id);
+    const media = projectMedia.filter(r => r.project_id === p.id).sort((a,b) => a.sort_order - b.sort_order).map(r => ({ id: r.id, mediaId: r.media_id, width: r.width ?? 'full', caption: r.caption ?? null }));
+    const links = projectLinks.filter(r => r.project_id === p.id).sort((a,b) => a.sort_order - b.sort_order).map(r => ({ id: r.id, label: r.label, url: r.url }));
+
     await sql`
       insert into projects (id, title, slug, client, year, role, summary, body, cover_media_id,
         card_ratio, open_as, external_url, is_featured, featured_order, status, sort_order,
-        published_at, seo_title, seo_description, og_image_id, created_at, updated_at, deleted_at)
+        published_at, seo_title, seo_description, og_image_id, created_at, updated_at, deleted_at,
+        category_ids, tool_ids, gallery, links)
       values (${p.id}, ${p.title}, ${p.slug}, ${nul(p.client)}, ${nul(p.year)}, ${nul(p.role)},
         ${nul(p.summary)}, ${nul(p.body)}, ${nul(p.cover_media_id)}, ${p.card_ratio ?? "auto"},
         ${p.open_as ?? "auto"}, ${nul(p.external_url)}, ${bool(p.is_featured)},
         ${nul(p.featured_order)}, ${p.status}, ${p.sort_order}, ${nul(p.published_at)},
         ${nul(p.seo_title)}, ${nul(p.seo_description)}, ${nul(p.og_image_id)},
-        ${p.created_at}, ${p.updated_at}, ${nul(p.deleted_at)})
-      on conflict (id) do nothing`;
-  }
-
-  for (const r of all("project_categories")) {
-    await sql`insert into project_categories (project_id, category_id)
-              values (${r.project_id}, ${r.category_id}) on conflict do nothing`;
-  }
-  for (const r of all("project_tools")) {
-    await sql`insert into project_tools (project_id, tool_id)
-              values (${r.project_id}, ${r.tool_id}) on conflict do nothing`;
-  }
-  for (const r of all("project_media")) {
-    await sql`
-      insert into project_media (id, project_id, media_id, sort_order, width, caption)
-      values (${r.id}, ${r.project_id}, ${r.media_id}, ${r.sort_order}, ${r.width ?? "full"},
-              ${nul(r.caption)})
-      on conflict (id) do nothing`;
-  }
-  for (const r of all("project_links")) {
-    await sql`
-      insert into project_links (id, project_id, label, url, sort_order)
-      values (${r.id}, ${r.project_id}, ${r.label}, ${r.url}, ${r.sort_order})
+        ${p.created_at}, ${p.updated_at}, ${nul(p.deleted_at)},
+        ${sql.json(cats)}, ${sql.json(tools)}, ${sql.json(media)}, ${sql.json(links)})
       on conflict (id) do nothing`;
   }
 
@@ -255,7 +245,6 @@ async function main() {
 
 const TABLES = [
   ["media"], ["sections"], ["tools"], ["experiences"], ["categories"], ["projects"],
-  ["project_categories"], ["project_tools"], ["project_media"], ["project_links"],
   ["admin_users"],
 ];
 

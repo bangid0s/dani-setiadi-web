@@ -186,9 +186,9 @@ export async function mediaUsageMany(ids: string[]): Promise<Record<string, stri
       select cover_media_id, title from projects
       where cover_media_id in ${sql(unique)} and deleted_at is null`;
   const gallery = await sql<Row[]>`
-      select pm.media_id, p.title from project_media pm
-      join projects p on p.id = pm.project_id
-      where pm.media_id in ${sql(unique)} and p.deleted_at is null`;
+      select g."mediaId" as media_id, p.title 
+      from projects p, jsonb_to_recordset(p.gallery) as g("mediaId" text)
+      where g."mediaId" in ${sql(unique)} and p.deleted_at is null`;
   const tools = await sql<Row[]>`
       select icon_media_id, name from tools
       where icon_media_id in ${sql(unique)}`;

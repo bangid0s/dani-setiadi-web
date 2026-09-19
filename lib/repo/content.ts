@@ -343,9 +343,8 @@ const cachedListActiveCategories = unstable_cache(
     const rows = await sql<Row[]>`
       select c.* from categories c
       where c.is_visible and exists (
-        select 1 from project_categories pc
-        join projects p on p.id = pc.project_id
-        where pc.category_id = c.id and p.status = 'published' and p.deleted_at is null)
+        select 1 from projects p
+        where p.category_ids @> jsonb_build_array(c.id::text) and p.status = 'published' and p.deleted_at is null)
       order by c.sort_order asc`;
     return rows.map(rowToCategory);
   },
@@ -375,10 +374,25 @@ export async function updateCategory(id: string, name: string, isVisible: boolea
 export async function deleteCategory(id: string, moveToId?: string | null): Promise<void> {
   await sql.begin(async (tx) => {
     if (moveToId) {
+      // Replace id with moveToId and remove duplicates
       await tx`
-        insert into project_categories (project_id, category_id)
-        select project_id, ${moveToId} from project_categories where category_id = ${id}
-        on conflict do nothing`;
+        update projects 
+        set category_ids = (
+          select coalesce(jsonb_agg(distinct case when value#>>'{}' = ${id} then to_jsonb(${moveToId}::text) else value end), '[]'::jsonb)
+          from jsonb_array_elements(category_ids) as value
+        )
+        where category_ids @> jsonb_build_array(${id}::text)
+      `;
+    } else {
+       await tx`
+         update projects
+         set category_ids = (
+           select coalesce(jsonb_agg(value), '[]'::jsonb)
+           from jsonb_array_elements(category_ids) as value
+           where value#>>'{}' != ${id}
+         )
+         where category_ids @> jsonb_build_array(${id}::text)
+       `;
     }
     await tx`delete from categories where id = ${id}`;
   });
@@ -413,33 +427,6 @@ export async function uniqueSlug(table: string, base: string, ignoreId?: string)
     if (rows.length === 0) return candidate;
     candidate = `${base}-${++n}`;
   }
-}
-
-// --- Project links / gallery rows used by the project repo ------------------
-
-export async function projectLinks(projectId: string): Promise<ProjectLink[]> {
-  const rows = await sql<Row[]>`
-    select * from project_links where project_id = ${projectId} order by sort_order asc`;
-  return rows.map((r) => ({
-    id: String(r.id),
-    label: String(r.label),
-    url: String(r.url),
-    sortOrder: Number(r.sort_order),
-  }));
-}
-
-export async function projectGallery(projectId: string): Promise<ProjectMediaItem[]> {
-  const rows = await sql<Row[]>`
-    select * from project_media where project_id = ${projectId} order by sort_order asc`;
-  const media = await getMediaMany(rows.map((r) => String(r.media_id)));
-  return rows.map((r) => ({
-    id: String(r.id),
-    mediaId: String(r.media_id),
-    media: media.get(String(r.media_id)) ?? null,
-    sortOrder: Number(r.sort_order),
-    width: (r.width as ProjectMediaItem["width"]) ?? "full",
-    caption: (r.caption as string) ?? null,
-  }));
 }
 
 export type { Project };

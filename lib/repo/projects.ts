@@ -1,10 +1,10 @@
 import { unstable_cache } from "next/cache";
-import { sql, toBool } from "@/lib/db";
+import { sql, toBool, parseJson } from "@/lib/db";
 import { getMedia, getMediaMany } from "@/lib/repo/media";
 import {
-  projectGallery, projectLinks, listCategories, listTools, uniqueSlug,
+  listCategories, listTools, uniqueSlug,
 } from "@/lib/repo/content";
-import type { Category, Project, ProjectStatus, Tool } from "@/lib/types";
+import type { Category, Project, ProjectStatus, Tool, ProjectMediaItem, ProjectLink } from "@/lib/types";
 import type { PublishBlocker } from "@/lib/validation";
 
 type Row = Record<string, unknown>;
@@ -36,97 +36,66 @@ function baseProject(r: Row): Omit<Project, "cover" | "categories" | "tools" | "
   };
 }
 
-/** Attaches covers, categories, tools, gallery, and links to many rows concurrently. */
+/** Attaches covers, categories, tools, gallery, and links by parsing JSON arrays and in-memory caches. */
 async function hydrateMany(rows: Row[], opts: { gallery?: boolean } = {}): Promise<Project[]> {
   if (rows.length === 0) return [];
-  const ids = rows.map((r) => String(r.id));
 
-  const [covers, catRows, toolRows, galleryRows, linkRows] = await Promise.all([
-    getMediaMany(rows.map((r) => r.cover_media_id as string).filter(Boolean)),
-    sql<Row[]>`
-      select pc.project_id, c.* from project_categories pc
-      join categories c on c.id = pc.category_id
-      where pc.project_id in ${sql(ids)} order by c.sort_order asc`,
-    sql<Row[]>`
-      select pt.project_id, t.* from project_tools pt
-      join tools t on t.id = pt.tool_id
-      where pt.project_id in ${sql(ids)} order by t.sort_order asc`,
-    opts.gallery
-      ? sql<Row[]>`select * from project_media where project_id in ${sql(ids)} order by sort_order asc`
-      : Promise.resolve([]),
-    opts.gallery
-      ? sql<Row[]>`select * from project_links where project_id in ${sql(ids)} order by sort_order asc`
-      : Promise.resolve([]),
+  // Collect all media IDs
+  const mediaIds = new Set<string>();
+  for (const r of rows) {
+    if (r.cover_media_id) mediaIds.add(String(r.cover_media_id));
+    if (opts.gallery) {
+      const g = parseJson<any[]>(r.gallery, []);
+      for (const item of g) if (item.mediaId) mediaIds.add(String(item.mediaId));
+    }
+  }
+
+  // Fetch all needed media in ONE query, fetch ALL categories and tools from cache (instant)
+  const [allMedia, allCats, allTools] = await Promise.all([
+    getMediaMany(Array.from(mediaIds)),
+    listCategories(),
+    listTools(),
   ]);
 
-  const catsByProject = new Map<string, Category[]>();
-  for (const row of catRows) {
-    const list = catsByProject.get(String(row.project_id)) ?? [];
-    list.push({
-      id: String(row.id),
-      name: String(row.name),
-      slug: String(row.slug),
-      sortOrder: Number(row.sort_order),
-      isVisible: toBool(row.is_visible),
-    });
-    catsByProject.set(String(row.project_id), list);
-  }
-
-  const [toolIcons, galleryMedia] = await Promise.all([
-    getMediaMany(toolRows.map((r) => r.icon_media_id as string).filter(Boolean)),
-    opts.gallery ? getMediaMany(galleryRows.map((r) => String(r.media_id))) : Promise.resolve(new Map()),
-  ]);
-
-  const toolsByProject = new Map<string, Tool[]>();
-  for (const row of toolRows) {
-    const list = toolsByProject.get(String(row.project_id)) ?? [];
-    list.push({
-      id: String(row.id),
-      name: String(row.name),
-      iconMediaId: (row.icon_media_id as string) ?? null,
-      icon: row.icon_media_id ? (toolIcons.get(String(row.icon_media_id)) ?? null) : null,
-      url: (row.url as string) ?? null,
-      sortOrder: Number(row.sort_order),
-      isVisible: toBool(row.is_visible),
-    });
-    toolsByProject.set(String(row.project_id), list);
-  }
-
-  const galleryByProject = new Map<string, any[]>();
-  for (const row of galleryRows) {
-    const list = galleryByProject.get(String(row.project_id)) ?? [];
-    list.push({
-      id: String(row.id),
-      mediaId: String(row.media_id),
-      media: galleryMedia.get(String(row.media_id)) ?? null,
-      sortOrder: Number(row.sort_order),
-      width: row.width ?? "full",
-      caption: row.caption ?? null,
-    });
-    galleryByProject.set(String(row.project_id), list);
-  }
-
-  const linksByProject = new Map<string, any[]>();
-  for (const row of linkRows) {
-    const list = linksByProject.get(String(row.project_id)) ?? [];
-    list.push({
-      id: String(row.id),
-      label: String(row.label),
-      url: String(row.url),
-      sortOrder: Number(row.sort_order),
-    });
-    linksByProject.set(String(row.project_id), list);
-  }
+  const catMap = new Map(allCats.map((c) => [c.id, c]));
+  const toolMap = new Map(allTools.map((t) => [t.id, t]));
 
   return rows.map((r) => {
-    const id = String(r.id);
+    const rawCatIds = parseJson<string[]>(r.category_ids, []);
+    const rawToolIds = parseJson<string[]>(r.tool_ids, []);
+    const rawGallery = parseJson<any[]>(r.gallery, []);
+    const rawLinks = parseJson<any[]>(r.links, []);
+
+    const categories = rawCatIds.map((id) => catMap.get(id)).filter(Boolean) as Category[];
+    const tools = rawToolIds.map((id) => toolMap.get(id)).filter(Boolean) as Tool[];
+    
+    const gallery: ProjectMediaItem[] = opts.gallery
+      ? rawGallery.map((g) => ({
+          id: String(g.id),
+          mediaId: String(g.mediaId),
+          media: allMedia.get(String(g.mediaId)) ?? null,
+          sortOrder: 0, // Not needed anymore since array order defines sort order
+          width: g.width ?? "full",
+          caption: g.caption ?? null,
+        }))
+      : [];
+      
+    const links: ProjectLink[] = opts.gallery
+      ? rawLinks.map((l) => ({
+          id: String(l.id),
+          label: String(l.label),
+          url: String(l.url),
+          sortOrder: 0,
+        }))
+      : [];
+
     return {
       ...baseProject(r),
-      cover: r.cover_media_id ? (covers.get(String(r.cover_media_id)) ?? null) : null,
-      categories: catsByProject.get(id) ?? [],
-      tools: toolsByProject.get(id) ?? [],
-      gallery: galleryByProject.get(id) ?? [],
-      links: linksByProject.get(id) ?? [],
+      cover: r.cover_media_id ? (allMedia.get(String(r.cover_media_id)) ?? null) : null,
+      categories,
+      tools,
+      gallery,
+      links,
     };
   });
 }
@@ -147,11 +116,22 @@ async function rawListProjects(
 ): Promise<{ items: Project[]; total: number }> {
   const byStatus =
     opts.status && opts.status !== "all" ? sql`and p.status = ${opts.status}` : sql``;
-  const byCategory = opts.categorySlug
-    ? sql`and exists (select 1 from project_categories pc
-                      join categories c on c.id = pc.category_id
-                      where pc.project_id = p.id and c.slug = ${opts.categorySlug})`
-    : sql``;
+    
+  // category lookup uses the JSONB containment operator `@>`
+  // But wait, the categories table holds the slug. We need the ID first.
+  let byCategory = sql``;
+  if (opts.categorySlug) {
+    const allCats = await listCategories();
+    const targetCat = allCats.find((c) => c.slug === opts.categorySlug);
+    if (targetCat) {
+      // Use JSONB containment to match the category ID inside the JSON array
+      byCategory = sql`and p.category_ids @> ${sql.json([targetCat.id])}`;
+    } else {
+      // Category not found, return empty
+      return { items: [], total: 0 };
+    }
+  }
+
   const q = opts.search?.trim() ? `%${opts.search.trim().toLowerCase()}%` : null;
   const bySearch = q
     ? sql`and (lower(p.title) like ${q} or lower(coalesce(p.client,'')) like ${q}
@@ -284,10 +264,11 @@ async function nextFeaturedOrder(): Promise<number> {
 export async function createProject(input: ProjectInput): Promise<string> {
   const slug = await uniqueSlug("projects", input.slug);
   const [minRow] = await sql<Row[]>`select coalesce(min(sort_order), 1) as n from projects`;
+  
   const [row] = await sql<Row[]>`
     insert into projects (title, slug, client, year, role, summary, body, cover_media_id,
       card_ratio, open_as, external_url, is_featured, featured_order, status, sort_order,
-      published_at, seo_title, seo_description)
+      published_at, seo_title, seo_description, category_ids, tool_ids)
     values (${input.title}, ${slug}, ${input.client || null}, ${input.year ?? null},
       ${input.role || null}, ${input.summary || null}, ${input.body || null},
       ${input.coverMediaId || null}, ${input.cardRatio ?? "auto"}, ${input.openAs ?? "auto"},
@@ -295,19 +276,17 @@ export async function createProject(input: ProjectInput): Promise<string> {
       ${input.isFeatured ? await nextFeaturedOrder() : null}, ${input.status ?? "draft"},
       ${Number(minRow.n) - 1},
       ${input.status === "published" ? new Date().toISOString() : null},
-      ${input.seoTitle || null}, ${input.seoDescription || null})
+      ${input.seoTitle || null}, ${input.seoDescription || null},
+      ${sql.json(input.categoryIds ?? [])}, ${sql.json(input.toolIds ?? [])})
     returning id`;
-  const id = String(row.id);
-  await setProjectCategories(id, input.categoryIds ?? []);
-  await setProjectTools(id, input.toolIds ?? []);
-  return id;
+  
+  return String(row.id);
 }
 
 export async function updateProject(id: string, input: ProjectInput): Promise<void> {
   const [current] = await sql<Row[]>`
     select status, published_at, is_featured, featured_order from projects where id = ${id}`;
   const wasFeatured = toBool(current?.is_featured);
-  // Keep an existing featured position; only newly-featured work gets a new one.
   const featuredOrder = input.isFeatured
     ? wasFeatured
       ? (current?.featured_order === null || current?.featured_order === undefined
@@ -322,41 +301,31 @@ export async function updateProject(id: string, input: ProjectInput): Promise<vo
       ? ((current?.published_at as string) ?? new Date().toISOString())
       : ((current?.published_at as string) ?? null);
 
-  await sql`
-    update projects set title = ${input.title},
-      slug = ${await uniqueSlug("projects", input.slug, id)},
-      client = ${input.client || null}, year = ${input.year ?? null},
-      role = ${input.role || null}, summary = ${input.summary || null},
-      body = ${input.body || null}, cover_media_id = ${input.coverMediaId || null},
-      card_ratio = ${input.cardRatio ?? "auto"}, open_as = ${input.openAs ?? "auto"},
-      external_url = ${input.externalUrl || null}, is_featured = ${input.isFeatured ?? false},
-      featured_order = ${featuredOrder}, status = ${nextStatus}, published_at = ${publishedAt},
-      seo_title = ${input.seoTitle || null}, seo_description = ${input.seoDescription || null},
-      updated_at = now()
-    where id = ${id}`;
+  const updates: Record<string, unknown> = {
+    title: input.title,
+    slug: await uniqueSlug("projects", input.slug, id),
+    client: input.client || null,
+    year: input.year ?? null,
+    role: input.role || null,
+    summary: input.summary || null,
+    body: input.body || null,
+    cover_media_id: input.coverMediaId || null,
+    card_ratio: input.cardRatio ?? "auto",
+    open_as: input.openAs ?? "auto",
+    external_url: input.externalUrl || null,
+    is_featured: input.isFeatured ?? false,
+    featured_order: featuredOrder,
+    status: nextStatus,
+    published_at: publishedAt,
+    seo_title: input.seoTitle || null,
+    seo_description: input.seoDescription || null,
+    updated_at: new Date().toISOString()
+  };
 
-  if (input.categoryIds) await setProjectCategories(id, input.categoryIds);
-  if (input.toolIds) await setProjectTools(id, input.toolIds);
-}
+  if (input.categoryIds) updates.category_ids = sql.json(input.categoryIds);
+  if (input.toolIds) updates.tool_ids = sql.json(input.toolIds);
 
-export async function setProjectCategories(projectId: string, categoryIds: string[]): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`delete from project_categories where project_id = ${projectId}`;
-    for (const cid of categoryIds) {
-      await tx`insert into project_categories (project_id, category_id)
-               values (${projectId}, ${cid}) on conflict do nothing`;
-    }
-  });
-}
-
-export async function setProjectTools(projectId: string, toolIds: string[]): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`delete from project_tools where project_id = ${projectId}`;
-    for (const tid of toolIds) {
-      await tx`insert into project_tools (project_id, tool_id)
-               values (${projectId}, ${tid}) on conflict do nothing`;
-    }
-  });
+  await sql`update projects set ${sql(updates)} where id = ${id}`;
 }
 
 export async function setProjectStatus(id: string, status: ProjectStatus): Promise<void> {
@@ -406,53 +375,76 @@ export async function addProjectMedia(
   mediaId: string,
   width: "full" | "half" = "full",
 ): Promise<string> {
-  const [row] = await sql<Row[]>`
-    insert into project_media (project_id, media_id, sort_order, width)
-    values (${projectId}, ${mediaId},
-      (select coalesce(max(sort_order), 0) + 1 from project_media where project_id = ${projectId}),
-      ${width})
-    returning id`;
-  return String(row.id);
+  const id = crypto.randomUUID();
+  await sql`
+    update projects 
+    set gallery = gallery || ${sql.json([{ id, mediaId, width, caption: null }])}::jsonb 
+    where id = ${projectId}`;
+  return id;
 }
 
 export async function updateProjectMedia(
   id: string,
   patch: { width?: "full" | "half"; caption?: string | null },
 ): Promise<void> {
-  if (patch.width !== undefined) {
-    await sql`update project_media set width = ${patch.width} where id = ${id}`;
+  const [row] = await sql<Row[]>`
+    select id, gallery from projects where gallery @> ${sql.json([{ id }])} limit 1`;
+  if (!row) return;
+
+  const gallery = parseJson<any[]>(row.gallery, []);
+  for (const item of gallery) {
+    if (item.id === id) {
+      if (patch.width !== undefined) item.width = patch.width;
+      if (patch.caption !== undefined) item.caption = patch.caption;
+      break;
+    }
   }
-  if (patch.caption !== undefined) {
-    await sql`update project_media set caption = ${patch.caption || null} where id = ${id}`;
-  }
+  await sql`update projects set gallery = ${sql.json(gallery)} where id = ${String(row.id)}`;
 }
 
 export async function removeProjectMedia(id: string): Promise<void> {
-  await sql`delete from project_media where id = ${id}`;
+  const [row] = await sql<Row[]>`
+    select id, gallery from projects where gallery @> ${sql.json([{ id }])} limit 1`;
+  if (!row) return;
+
+  const gallery = parseJson<any[]>(row.gallery, []).filter((g) => g.id !== id);
+  await sql`update projects set gallery = ${sql.json(gallery)} where id = ${String(row.id)}`;
 }
 
 export async function reorderProjectMedia(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await sql.begin(async (tx) => {
-    for (const [i, id] of ids.entries()) {
-      await tx`update project_media set sort_order = ${i + 1} where id = ${id}`;
+  // This expects all items belong to the same project
+  const [row] = await sql<Row[]>`
+    select id, gallery from projects where gallery @> ${sql.json([{ id: ids[0] }])} limit 1`;
+  if (!row) return;
+  
+  const gallery = parseJson<any[]>(row.gallery, []);
+  const map = new Map(gallery.map(g => [g.id, g]));
+  
+  const newGallery = [];
+  for (const id of ids) {
+    if (map.has(id)) {
+      newGallery.push(map.get(id));
+      map.delete(id);
     }
-  });
+  }
+  // Append any that weren't in the ids array
+  for (const remaining of map.values()) {
+    newGallery.push(remaining);
+  }
+  
+  await sql`update projects set gallery = ${sql.json(newGallery)} where id = ${String(row.id)}`;
 }
 
 export async function setProjectLinks(
   projectId: string,
   links: { label: string; url: string }[],
 ): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`delete from project_links where project_id = ${projectId}`;
-    let i = 0;
-    for (const l of links) {
-      if (!l.label.trim() || !l.url.trim()) continue;
-      await tx`insert into project_links (project_id, label, url, sort_order)
-               values (${projectId}, ${l.label.trim()}, ${l.url.trim()}, ${++i})`;
-    }
-  });
+  const validLinks = links
+    .filter(l => l.label.trim() && l.url.trim())
+    .map(l => ({ id: crypto.randomUUID(), label: l.label.trim(), url: l.url.trim() }));
+    
+  await sql`update projects set links = ${sql.json(validLinks)} where id = ${projectId}`;
 }
 
 /** PRD §9.4 publish checklist. Each blocker names the field and how to fix it. */
