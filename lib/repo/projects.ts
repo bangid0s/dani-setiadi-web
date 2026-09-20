@@ -285,7 +285,7 @@ export async function createProject(input: ProjectInput): Promise<string> {
 
 export async function updateProject(id: string, input: ProjectInput): Promise<void> {
   const [current] = await sql<Row[]>`
-    select status, published_at, is_featured, featured_order from projects where id = ${id}`;
+    select status, published_at, is_featured, featured_order, slug from projects where id = ${id}`;
   const wasFeatured = toBool(current?.is_featured);
   const featuredOrder = input.isFeatured
     ? wasFeatured
@@ -301,9 +301,13 @@ export async function updateProject(id: string, input: ProjectInput): Promise<vo
       ? ((current?.published_at as string) ?? new Date().toISOString())
       : ((current?.published_at as string) ?? null);
 
+  const slug = input.slug !== current?.slug
+    ? await uniqueSlug("projects", input.slug, id)
+    : input.slug;
+
   const updates: Record<string, unknown> = {
     title: input.title,
-    slug: await uniqueSlug("projects", input.slug, id),
+    slug,
     client: input.client || null,
     year: input.year ?? null,
     role: input.role || null,
@@ -328,13 +332,15 @@ export async function updateProject(id: string, input: ProjectInput): Promise<vo
   await sql`update projects set ${sql(updates)} where id = ${id}`;
 }
 
-export async function setProjectStatus(id: string, status: ProjectStatus): Promise<void> {
+export async function setProjectStatus(id: string | string[], status: ProjectStatus): Promise<void> {
+  const ids = Array.isArray(id) ? id : [id];
+  if (ids.length === 0) return;
   await sql`
     update projects set status = ${status},
       published_at = case when ${status} = 'published' and published_at is null
                           then now() else published_at end,
       updated_at = now()
-    where id = ${id}`;
+    where id in ${sql(ids)}`;
 }
 
 export async function toggleFeatured(id: string, featured: boolean): Promise<void> {
@@ -356,16 +362,22 @@ async function reorderBy(column: "sort_order" | "featured_order", ids: string[])
   });
 }
 
-export async function softDeleteProject(id: string): Promise<void> {
-  await sql`update projects set deleted_at = now(), status = 'archived' where id = ${id}`;
+export async function softDeleteProject(id: string | string[]): Promise<void> {
+  const ids = Array.isArray(id) ? id : [id];
+  if (ids.length === 0) return;
+  await sql`update projects set deleted_at = now(), status = 'archived' where id in ${sql(ids)}`;
 }
 
-export async function restoreProject(id: string): Promise<void> {
-  await sql`update projects set deleted_at = null, status = 'draft' where id = ${id}`;
+export async function restoreProject(id: string | string[]): Promise<void> {
+  const ids = Array.isArray(id) ? id : [id];
+  if (ids.length === 0) return;
+  await sql`update projects set deleted_at = null, status = 'draft' where id in ${sql(ids)}`;
 }
 
-export async function hardDeleteProject(id: string): Promise<void> {
-  await sql`delete from projects where id = ${id}`;
+export async function hardDeleteProject(id: string | string[]): Promise<void> {
+  const ids = Array.isArray(id) ? id : [id];
+  if (ids.length === 0) return;
+  await sql`delete from projects where id in ${sql(ids)}`;
 }
 
 // --- Gallery rows -----------------------------------------------------------

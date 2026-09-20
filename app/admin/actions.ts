@@ -41,7 +41,7 @@ function objectPathFromUrl(url: string | null): string | null {
 function revalidateSite() {
   revalidatePath("/", "layout");
   try {
-    revalidateTag("site", { expire: 0 });
+    revalidateTag("site");
   } catch {}
 }
 
@@ -407,22 +407,29 @@ export async function saveProjectAction(
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
 
-  const projectId = id || await createProject({ ...parsed.data, status: "draft" });
+  let projectId = id;
+  if (!projectId) {
+    projectId = await createProject({ ...parsed.data, status: "draft" });
+  }
 
-  // Links are saved before the publish check so nothing is lost on a block.
   const linkLabels = formData.getAll("linkLabel").map(String);
   const linkUrls = formData.getAll("linkUrl").map(String);
-  await setProjectLinks(
-    projectId,
-    linkLabels.map((label, i) => ({ label, url: linkUrls[i] ?? "" })),
-  );
 
   if (intent === "publish") {
-    // §9.4 publish checklist — block with a specific message for each failure.
-    await updateProject(projectId, { ...parsed.data, status: "draft" });
-    const project = await getProjectById(projectId);
-    const blockers = project ? await publishBlockers({ ...project, openAs: parsed.data.openAs, externalUrl: parsed.data.externalUrl ?? null }) : [];
+    const existing = projectId ? await getProjectById(projectId) : null;
+    const mockProject = {
+      ...parsed.data,
+      gallery: existing ? existing.gallery : [],
+      categories: parsed.data.categoryIds.map((cId) => ({ id: cId }))
+    } as any;
+    
+    const blockers = await publishBlockers(mockProject);
     if (blockers.length > 0) {
+      if (id) await updateProject(projectId, { ...parsed.data, status: "draft" });
+      await setProjectLinks(
+        projectId,
+        linkLabels.map((label, i) => ({ label, url: linkUrls[i] ?? "" })),
+      );
       revalidatePath(`/admin/projects/${projectId}`);
       return { error: blockers.map((b) => b.message).join(" "), success: null };
     }
@@ -430,6 +437,11 @@ export async function saveProjectAction(
   } else {
     await updateProject(projectId, parsed.data);
   }
+
+  await setProjectLinks(
+    projectId,
+    linkLabels.map((label, i) => ({ label, url: linkUrls[i] ?? "" })),
+  );
 
   revalidateSite();
   revalidatePath(`/admin/projects/${projectId}`);
@@ -447,14 +459,16 @@ export async function bulkProjectAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const ids = list(formData, "selected");
   const op = str(formData, "op");
-  for (const id of ids) {
-    if (op === "publish") await setProjectStatus(id, "published");
-    else if (op === "unpublish") await setProjectStatus(id, "draft");
-    else if (op === "archive") await setProjectStatus(id, "archived");
-    else if (op === "delete") await softDeleteProject(id);
-    else if (op === "restore") await restoreProject(id);
-    else if (op === "destroy") await hardDeleteProject(id);
+  
+  if (ids.length > 0) {
+    if (op === "publish") await setProjectStatus(ids, "published");
+    else if (op === "unpublish") await setProjectStatus(ids, "draft");
+    else if (op === "archive") await setProjectStatus(ids, "archived");
+    else if (op === "delete") await softDeleteProject(ids);
+    else if (op === "restore") await restoreProject(ids);
+    else if (op === "destroy") await hardDeleteProject(ids);
   }
+
   revalidateSite();
   revalidatePath("/admin/projects");
   const redir = str(formData, "redirect");
