@@ -41,7 +41,7 @@ function objectPathFromUrl(url: string | null): string | null {
 function revalidateSite() {
   revalidatePath("/", "layout");
   try {
-    revalidateTag("site");
+    revalidateTag("site", "max");
   } catch {}
 }
 
