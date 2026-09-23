@@ -4,7 +4,11 @@ import { getSettings } from "@/lib/repo/content";
 import { listAdmins, currentAdmin } from "@/lib/auth";
 
 export default async function SettingsPage() {
-  const me = await currentAdmin();
+  const [me, settings, admins] = await Promise.all([
+    currentAdmin(),
+    getSettings(),
+    listAdmins(),
+  ]);
   return (
     <>
       <PageHeader
@@ -12,8 +16,8 @@ export default async function SettingsPage() {
         description="Contact details, availability, search listing, wording and account access."
       />
       <SettingsForms
-        settings={await getSettings()}
-        admins={await listAdmins()}
+        settings={settings}
+        admins={admins}
         currentUserId={me?.userId ?? ""}
       />
     </>

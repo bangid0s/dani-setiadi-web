@@ -9,14 +9,18 @@ export default async function ProjectEditorPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const project = await getProjectById(id);
+  const [project, categories, tools] = await Promise.all([
+    getProjectById(id),
+    listCategories(),
+    listTools(),
+  ]);
   if (!project) notFound();
 
   return (
     <ProjectEditor
       project={project}
-      categories={await listCategories()}
-      tools={await listTools()}
+      categories={categories}
+      tools={tools}
     />
   );
 }

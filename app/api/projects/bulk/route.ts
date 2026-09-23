@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       status: "draft",
       categoryIds,
     });
-    for (const item of items.slice(1)) await addProjectMedia(projectId, item.mediaId);
+    await addProjectMedia(projectId, items.slice(1).map((item) => item.mediaId));
     revalidatePath("/admin/projects");
     return NextResponse.json({ projectId, created: 1 });
   }

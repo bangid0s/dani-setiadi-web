@@ -28,6 +28,15 @@ export function ProjectsTable({
   const [order, setOrder] = useState(projects);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // After an action (star, publish, delete…) the server sends a fresh list;
+  // adopt it, or the rows on screen would keep showing the old state.
+  const [synced, setSynced] = useState(projects);
+  if (projects !== synced) {
+    setSynced(projects);
+    setOrder(projects);
+    setSelected(new Set());
+  }
+
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params.toString());
     if (value) next.set(key, value);
@@ -140,7 +149,7 @@ export function ProjectsTable({
                       disabledDown={i === order.length - 1}
                     />
                     <span className="block aspect-[4/3] w-14 overflow-hidden rounded-[6px] border border-line bg-surface">
-                      {p.cover ? <Thumb media={p.cover} /> : null}
+                      {p.cover ? <Thumb media={p.cover} sizes="56px" /> : null}
                     </span>
 
                     <span className="min-w-0">

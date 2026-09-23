@@ -16,8 +16,8 @@ import type {
 } from "@/lib/types";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSettings();
-  const hero = (await listSections()).find((s) => s.key === "hero")?.content as HeroContent | undefined;
+  const [settings, sections] = await Promise.all([getSettings(), listSections()]);
+  const hero = sections.find((s) => s.key === "hero")?.content as HeroContent | undefined;
   const name = hero?.displayName ?? "Dani Setiadi";
   const title = `${name} — ${hero?.roleLine ?? "Graphic Designer & Illustrator"}`;
   const ogImage = settings.ogImage?.storagePath ?? settings.ogImage?.originalUrl;
@@ -41,22 +41,25 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const settings = await getSettings();
-  const sections = await listSections({ visibleOnly: true });
-  const categories = await listActiveCategories();
-  const tools = await listTools({ visibleOnly: true });
-  const experiences = await listExperiences({ visibleOnly: true });
+  const [settings, sections, categories, tools, experiences] = await Promise.all([
+    getSettings(),
+    listSections({ visibleOnly: true }),
+    listActiveCategories(),
+    listTools({ visibleOnly: true }),
+    listExperiences({ visibleOnly: true }),
+  ]);
 
   const hero = sections.find((s) => s.key === "hero") as Section<HeroContent> | undefined;
   const work = sections.find((s) => s.key === "work") as Section<WorkContent> | undefined;
   const about = sections.find((s) => s.key === "about") as Section<AboutContent> | undefined;
   const contact = sections.find((s) => s.key === "contact") as Section<ContactContent> | undefined;
 
-  const featured = work?.content.showFeatured ? await featuredProjects() : [];
-  const gallery = await galleryProjects(settings.gallery.includeFeatured);
-  const portrait = await getMedia(hero?.content.portraitId);
-  const greetingSvg = await getMedia(hero?.content.greetingSvgId);
-  const items = await toGalleryItems(gallery);
+  const [featured, items, portrait, greetingSvg] = await Promise.all([
+    work?.content.showFeatured ? featuredProjects() : [],
+    galleryProjects(settings.gallery.includeFeatured).then(toGalleryItems),
+    getMedia(hero?.content.portraitId),
+    getMedia(hero?.content.greetingSvgId),
+  ]);
 
   const wa = whatsappUrl(settings.whatsappE164, settings.whatsappMessage);
   const mail = mailtoUrl(settings.contactEmail);

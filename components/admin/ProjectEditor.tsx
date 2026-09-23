@@ -349,6 +349,17 @@ function GalleryManager({ project }: { project: Project }) {
   const [order, setOrder] = useState(project.gallery);
   const [pendingMedia, setPendingMedia] = useState<Media[]>([]);
 
+  // Adding, removing or reordering items returns a fresh project; show it.
+  const [synced, setSynced] = useState(project.gallery);
+  const [pickerKey, setPickerKey] = useState(0);
+  const orderFormId = `gallery-order-${project.id}`;
+  if (project.gallery !== synced) {
+    setSynced(project.gallery);
+    setOrder(project.gallery);
+    setPendingMedia([]);
+    setPickerKey(pickerKey + 1);
+  }
+
   const move = (index: number, delta: number) => {
     const next = [...order];
     const t = index + delta;
@@ -368,6 +379,7 @@ function GalleryManager({ project }: { project: Project }) {
           <input key={m.id} type="hidden" name="mediaId" value={m.id} />
         ))}
         <MediaField
+          key={pickerKey}
           name="__picker"
           label="Add to the gallery"
           allow={{ upload: true, url: true, youtube: true }}
@@ -386,12 +398,17 @@ function GalleryManager({ project }: { project: Project }) {
       {order.length === 0 ? (
         <p className="text-[14px] text-muted">Nothing in the gallery yet.</p>
       ) : (
-        <form action={reorderProjectMediaAction}>
-          <input type="hidden" name="projectId" value={project.id} />
+        <>
+          {/* The order form stays empty and its fields point at it with the
+              form attribute: each row holds its own caption and remove forms,
+              and HTML does not allow forms inside forms. */}
+          <form id={orderFormId} action={reorderProjectMediaAction}>
+            <input type="hidden" name="projectId" value={project.id} />
+          </form>
           <ul className="divide-y divide-line">
             {order.map((item, i) => (
               <li key={item.id} className="flex items-start gap-3 py-3">
-                <input type="hidden" name="id" value={item.id} />
+                <input type="hidden" name="id" value={item.id} form={orderFormId} />
                 <MoveButtons
                   label={item.media?.title ?? "item"}
                   onUp={() => move(i, -1)}
@@ -400,7 +417,7 @@ function GalleryManager({ project }: { project: Project }) {
                   disabledDown={i === order.length - 1}
                 />
                 <span className="block aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-[6px] border border-line bg-surface">
-                  {item.media ? <Thumb media={item.media} /> : null}
+                  {item.media ? <Thumb media={item.media} sizes="80px" /> : null}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] text-ink">
@@ -415,9 +432,9 @@ function GalleryManager({ project }: { project: Project }) {
             ))}
           </ul>
           <div className="mt-4">
-            <Submit variant="outline">Save gallery order</Submit>
+            <Submit variant="outline" form={orderFormId}>Save gallery order</Submit>
           </div>
-        </form>
+        </>
       )}
     </Card>
   );

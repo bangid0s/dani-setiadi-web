@@ -87,7 +87,10 @@ export type Project = {
   year: number | null;
   role: string | null;
   summary: string | null;
+  /** Null in list reads, which leave the story out to stay light. */
   body: string | null;
+  /** True once the project has a story, gallery items or links worth a page. */
+  hasPage: boolean;
   coverMediaId: string | null;
   cover: Media | null;
   cardRatio: CardRatio;

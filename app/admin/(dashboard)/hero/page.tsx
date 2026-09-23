@@ -10,6 +10,10 @@ export default async function HeroAdminPage() {
   const section = await heroSection();
   const c = section?.content;
   if (!c) return <p>Hero chapter is missing. Run the seed script.</p>;
+  const [greetingSvg, portrait] = await Promise.all([
+    getMedia(c.greetingSvgId),
+    getMedia(c.portraitId),
+  ]);
 
   return (
     <>
@@ -51,7 +55,7 @@ export default async function HeroAdminPage() {
               name="greetingSvgId"
               label="Greeting lettering (SVG)"
               hint="Only used when the greeting style above is set to SVG."
-              initial={await getMedia(c.greetingSvgId)}
+              initial={greetingSvg}
               allow={{ upload: true, svgOnly: true }}
             />
             <Field
@@ -122,7 +126,7 @@ export default async function HeroAdminPage() {
             <MediaField
               name="portraitId"
               label="Portrait image"
-              initial={await getMedia(c.portraitId)}
+              initial={portrait}
               allow={{ upload: true, url: true }}
             />
             <Select

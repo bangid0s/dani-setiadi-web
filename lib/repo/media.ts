@@ -48,17 +48,23 @@ export const getMedia = cache(async (id: string | null | undefined): Promise<Med
   return cachedFetchMedia(id);
 });
 
+/** Reads media rows straight from the database, bypassing the shared cache. */
+export async function fetchMediaMany(ids: string[]): Promise<Map<string, Media>> {
+  const out = new Map<string, Media>();
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return out;
+  const rows = await sql<Row[]>`
+    select * from media where id in ${sql(unique)} and deleted_at is null`;
+  for (const row of rows) {
+    const m = rowToMedia(row);
+    if (m) out.set(m.id, m);
+  }
+  return out;
+}
+
 const cachedFetchMediaMany = unstable_cache(
   async (sortedUniqueIds: string[]): Promise<Record<string, Media>> => {
-    if (sortedUniqueIds.length === 0) return {};
-    const rows = await sql<Row[]>`
-      select * from media where id in ${sql(sortedUniqueIds)} and deleted_at is null`;
-    const out: Record<string, Media> = {};
-    for (const row of rows) {
-      const m = rowToMedia(row);
-      if (m) out[m.id] = m;
-    }
-    return out;
+    return Object.fromEntries(await fetchMediaMany(sortedUniqueIds));
   },
   ["media-many-by-ids"],
   { tags: ["site", "media"], revalidate: 3600 }
@@ -94,17 +100,16 @@ export async function listMedia(
               or lower(coalesce(original_url,'')) like ${q})`
     : sql``;
 
-  const [countRow] = await sql<Row[]>`
-    select count(*)::int as n from media
-    where deleted_at is null ${bySource} ${bySearch}`;
-
   const rows = await sql<Row[]>`
-    select * from media
+    select *, count(*) over() as total_count from media
     where deleted_at is null ${bySource} ${bySearch}
     order by created_at desc
     limit ${opts.limit ?? 60} offset ${opts.offset ?? 0}`;
 
-  return { items: rows.map(rowToMedia).filter(Boolean) as Media[], total: Number(countRow.n) };
+  return {
+    items: rows.map(rowToMedia).filter(Boolean) as Media[],
+    total: Number(rows[0]?.total_count ?? 0),
+  };
 }
 
 export type NewMedia = {
@@ -182,18 +187,20 @@ export async function mediaUsageMany(ids: string[]): Promise<Record<string, stri
   for (const id of unique) out[id] = [];
   if (unique.length === 0) return out;
 
-  const covers = await sql<Row[]>`
+  const [covers, gallery, tools, [hero], [settings]] = await Promise.all([
+    sql<Row[]>`
       select cover_media_id, title from projects
-      where cover_media_id in ${sql(unique)} and deleted_at is null`;
-  const gallery = await sql<Row[]>`
-      select g."mediaId" as media_id, p.title 
+      where cover_media_id in ${sql(unique)} and deleted_at is null`,
+    sql<Row[]>`
+      select g."mediaId" as media_id, p.title
       from projects p, jsonb_to_recordset(p.gallery) as g("mediaId" text)
-      where g."mediaId" in ${sql(unique)} and p.deleted_at is null`;
-  const tools = await sql<Row[]>`
+      where g."mediaId" in ${sql(unique)} and p.deleted_at is null`,
+    sql<Row[]>`
       select icon_media_id, name from tools
-      where icon_media_id in ${sql(unique)}`;
-  const [hero] = await sql<Row[]>`select content from sections where key = 'hero'`;
-  const [settings] = await sql<Row[]>`select og_image_id, favicon_id from site_settings where id = 1`;
+      where icon_media_id in ${sql(unique)}`,
+    sql<Row[]>`select content from sections where key = 'hero'`,
+    sql<Row[]>`select og_image_id, favicon_id from site_settings where id = 1`,
+  ]);
 
   for (const r of covers) {
     const id = String(r.cover_media_id);

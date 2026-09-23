@@ -66,7 +66,7 @@ protocol) so you can run the whole app offline — see
 |---|---|
 | Framework | Next.js (App Router, TypeScript) |
 | Styling | Tailwind CSS v4, brand tokens via `@theme` (PRD §5.10) |
-| Database | Supabase Postgres, via the `postgres` driver over the **session** pooler (port 5432) |
+| Database | Supabase Postgres, via the `postgres` driver over the **transaction** pooler (port 6543) |
 | Files | Supabase Storage — `media` and `files` buckets |
 | Images | `sharp` — downscaling, blur placeholders, dominant colour |
 | Validation | Zod schemas shared by client and server |
@@ -136,7 +136,7 @@ DEPLOY.md                 going live on GitHub + Supabase + Vercel
 Copy `.env.example` to `.env.local`. All four are required:
 
 ```bash
-DATABASE_URL=                 # Supabase → Database → Session pooler (port 5432, NOT 6543)
+DATABASE_URL=                 # Supabase → Database → Transaction pooler (6543; a 5432 URL is switched)
 NEXT_PUBLIC_SUPABASE_URL=     # Supabase → API → Project URL
 SUPABASE_SERVICE_ROLE_KEY=    # Supabase → API → service_role (server-only, never commit)
 NEXT_PUBLIC_SITE_URL=         # your public address, no trailing slash
@@ -144,10 +144,10 @@ NEXT_PUBLIC_SITE_URL=         # your public address, no trailing slash
 
 Set the same four in Vercel → Project → Settings → Environment Variables.
 
-> **Port 5432, not 6543.** The transaction pooler cannot safely interleave the
-> pipelined queries this client sends; past two concurrent queries it stalls
-> rather than erroring, so pages hang instead of failing. `lib/db/index.ts`
-> warns at startup if it sees 6543.
+> **Pipelining is off on purpose.** `lib/db/index.ts` sets `max_pipeline: 0`
+> so each connection carries one query at a time. With pipelining on, the
+> transaction pooler stalls past two concurrent queries instead of erroring,
+> and pages hang until the platform times them out.
 
 ## Security notes
 

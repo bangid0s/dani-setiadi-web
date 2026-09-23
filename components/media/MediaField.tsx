@@ -1,10 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Media } from "@/lib/types";
 import { bytesToSize } from "@/lib/format";
 import { LIMITS } from "@/lib/validation";
-import { mediaSrc } from "@/lib/media/src";
+import { mediaSrc, isExternalSrc } from "@/lib/media/src";
 
 /* ============================================================================
    PRD §8 — one Media Field for every image slot.
@@ -498,7 +499,7 @@ function LibraryPane({ onPick }: { onPick: (m: Media) => void }) {
                 className="block aspect-square w-full overflow-hidden rounded-[var(--radius-admin)] border border-line transition-colors hover:border-signal focus-visible:border-signal"
                 title={m.title ?? ""}
               >
-                <Thumb media={m} />
+                <Thumb media={m} sizes="128px" />
               </button>
             </li>
           ))}
@@ -682,8 +683,20 @@ function MediaPreview({
  * A media thumbnail that fills whatever box it is given. The container owns the
  * shape; the image never sets its own aspect-ratio, which is what previously
  * made these render as empty slivers.
+ *
+ * Our own stored images go through the image optimiser, so a 56px row in the
+ * projects list downloads a small WebP/AVIF instead of the full upload (up to
+ * 3200px). Hotlinked files, SVG and GIF are shown as they are.
  */
-export function Thumb({ media, className = "" }: { media: Media; className?: string }) {
+export function Thumb({
+  media,
+  className = "",
+  sizes = "160px",
+}: {
+  media: Media;
+  className?: string;
+  sizes?: string;
+}) {
   const src = mediaSrc(media);
   if (!src) {
     return (
@@ -694,14 +707,22 @@ export function Thumb({ media, className = "" }: { media: Media; className?: str
       </span>
     );
   }
+  const classes = `h-full w-full bg-surface object-cover ${className}`;
+  const isVector = media.mimeType === "image/svg+xml" || media.mimeType === "image/gif";
+  if (isExternalSrc(media) || isVector || !src.startsWith("https://")) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt="" loading="lazy" decoding="async" className={classes} />
+    );
+  }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
       src={src}
       alt=""
-      loading="lazy"
-      decoding="async"
-      className={`h-full w-full bg-surface object-cover ${className}`}
+      width={media.width}
+      height={media.height}
+      sizes={sizes}
+      className={classes}
     />
   );
 }

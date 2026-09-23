@@ -22,16 +22,16 @@ export default async function WorkPage({
 }: {
   searchParams: Promise<{ category?: string }>;
 }) {
-  const { category } = await searchParams;
-  const settings = await getSettings();
-  const sections = await listSections();
-  const rawProjects = await galleryProjects(true);
-  const categories = await listActiveCategories();
+  const [{ category }, settings, sections, items, categories] = await Promise.all([
+    searchParams,
+    getSettings(),
+    listSections(),
+    // /work shows everything, featured included.
+    galleryProjects(true).then(toGalleryItems),
+    listActiveCategories(),
+  ]);
   const section = sections.find((s) => s.key === "work") as Section<WorkContent> | undefined;
   const c = section?.content;
-
-  // /work shows everything, featured included.
-  const items = await toGalleryItems(rawProjects);
   const initialCategory = categories.some((x) => x.slug === category) ? (category ?? null) : null;
 
   return (

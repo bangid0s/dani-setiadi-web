@@ -1,58 +1,72 @@
-
+import "server-only";
 import postgres from "postgres";
 
 /**
  * Postgres connection for the whole app.
  *
- * Use Supabase's **transaction pooler** — the pooler host on port **6543**.
+ * Works with either Supabase pooler: the transaction pooler (port 6543, the one
+ * built for serverless) or the session pooler (port 5432). A session-pooler
+ * URL is upgraded to 6543 automatically, because on Vercel every warm instance
+ * holds its own connections and session mode runs out of them.
  *
- * We automatically upgrade connections mapped to the session pooler (5432) to 6543
- * to prevent connection exhaustion on Vercel Serverless.
- * Supavisor now supports interleaved query pipelining with `prepare: false`.
+ * The one setting that makes 6543 safe is `max_pipeline: 0`. By default
+ * postgres.js pipelines — it writes a second query onto a connection before
+ * the first has answered. Supavisor's transaction mode cannot interleave
+ * those, and past two concurrent queries it stalls forever instead of
+ * erroring: the page just spins until the platform times it out. With
+ * pipelining off, each connection carries exactly one query at a time, which
+ * is what a transaction pooler expects.
  *
- * The pool is deliberately small and gives idle connections back quickly:
- * transaction mode holds a server-side connection for only the duration of a query,
- * allowing hundreds of Serverless functions to safely share a small backend pool.
+ * The remaining settings keep a cold serverless instance cheap: no type
+ * lookup on connect, and idle connections are handed back quickly so a frozen
+ * instance never wakes up holding a socket the pooler already dropped.
  */
 declare global {
   var __daniSql: postgres.Sql | undefined;
 }
 
-const TRANSACTION_POOLER_PORT = "6543";
-
 function connectionString(): string {
-  let url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
       "DATABASE_URL is not set. Copy .env.example to .env.local and paste your " +
         "Supabase connection string (Project settings → Database → Connection " +
-        "string → Session pooler).",
+        "string → Transaction pooler).",
     );
   }
-  // Automatically upgrade to Supabase Transaction Pooler (port 6543)
-  // This is required for Vercel Serverless to prevent connection exhaustion.
-  // Supavisor now supports pipelined queries safely with prepare: false.
-  if (url.includes("pooler.supabase.com") && url.includes(":5432/")) {
-    url = url.replace(":5432/", ":6543/");
+  // Set DB_KEEP_PORT=1 to use the session pooler exactly as configured.
+  if (!process.env.DB_KEEP_PORT && url.includes("pooler.supabase.com") && url.includes(":5432/")) {
+    return url.replace(":5432/", ":6543/");
   }
-  
   return url;
+}
+
+function isLocal(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
 }
 
 function create(): postgres.Sql {
   const url = connectionString();
 
-  const defaultMax = process.env.NODE_ENV === "production" ? 2 : 10;
-
   return postgres(url, {
-    // Supabase requires SSL for external connections
-    ssl: "require",
-    // Prepared statements are disabled to ensure full compatibility with Supabase poolers
-    // and avoid collision issues across connection re-use.
+    // Supabase requires SSL; the local PGlite test server does not speak it.
+    ssl: isLocal(url) ? false : "require",
+    // Supavisor's transaction mode cannot keep prepared statements.
     prepare: false,
-    max: Number(process.env.DB_POOL_MAX ?? defaultMax),
-    idle_timeout: Number(process.env.DB_IDLE_TIMEOUT ?? 2),
-    max_lifetime: 10,
+    // One query per connection at a time — see the note above. postgres.js
+    // reads this option (src/index.js) but its type definitions omit it.
+    ...({ max_pipeline: 0 } as object),
+    // The app never reads Postgres array columns, so skip the extra
+    // round trip postgres.js makes on every new connection to learn them.
+    fetch_types: false,
+    max: Number(process.env.DB_POOL_MAX ?? 4),
+    idle_timeout: Number(process.env.DB_IDLE_TIMEOUT ?? 5),
+    max_lifetime: 60 * 5,
     connect_timeout: 10,
     // Dates come back as ISO strings so the repository layer stays unchanged.
     types: {
