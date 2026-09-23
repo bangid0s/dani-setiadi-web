@@ -249,6 +249,7 @@ export function Submit({
   variant = "primary",
   name,
   value,
+  form,
 }: {
   pending?: boolean;
   children: React.ReactNode;
@@ -256,12 +257,15 @@ export function Submit({
   variant?: "primary" | "outline";
   name?: string;
   value?: string;
+  /** Id of the form this button submits, when it sits outside that form. */
+  form?: string;
 }) {
   return (
     <button
       type="submit"
       name={name}
       value={value}
+      form={form}
       disabled={pending}
       className={`adm-btn ${variant === "primary" ? "adm-btn-primary" : "adm-btn-secondary"} ${className}`}
     >

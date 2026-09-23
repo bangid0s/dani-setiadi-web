@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { mediaMetaSchema } from "@/lib/validation";
 import { updateMediaMeta } from "@/lib/repo/media";
@@ -27,6 +27,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
   }
   await updateMediaMeta(id, parsed.data);
+  // Expire cached media now (route handlers cannot use updateTag), so the
+  // publish checklist and the site both see the new alt text straight away.
+  revalidateTag("site", { expire: 0 });
   revalidatePath("/", "layout");
   return NextResponse.json({ ok: true });
 }

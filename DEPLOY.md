@@ -59,6 +59,8 @@ Copy the whole file, paste, press **Run**:
 
 1. `supabase/migrations/0001_init.sql` — tables, indexes and row-level security
 2. `supabase/migrations/0002_storage.sql` — the `media` and `files` buckets
+3. `supabase/migrations/0003_indexes.sql`, `0004_simplify_projects.sql` and
+   `0005_project_json_indexes.sql` — in that order, once each
 
 You should see "Success. No rows returned" both times.
 
@@ -73,15 +75,13 @@ like:
 postgresql://postgres.abcdefgh:YOUR-PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
 ```
 
-> **Use the Session pooler — port 5432.** Supabase also offers a Transaction
-> pooler on port 6543, and it will *look* like it works: a single query returns
-> fine. But this app's Postgres client pipelines queries onto a connection, and
-> transaction mode cannot interleave them safely — past two concurrent queries
-> it stalls indefinitely instead of returning an error. Pages then hang rather
-> than fail, which is much harder to diagnose.
->
-> Same host, same password, just the other port. The app prints a warning at
-> startup if it spots port 6543.
+> **Either pooler string works.** The app switches a session-pooler URL
+> (port 5432) to the transaction pooler (port 6543) on its own, because on
+> Vercel every warm instance holds its own connections and session mode runs
+> out of them. Query pipelining is turned off in `lib/db/index.ts`, which is
+> what makes the transaction pooler safe: with it on, past two concurrent
+> queries the pooler stalls instead of erroring and pages hang. Set
+> `DB_KEEP_PORT=1` if you ever need to stay on 5432.
 
 **Project Settings → API**
 
@@ -137,7 +137,7 @@ npm run dev
 
    | Name | Value |
    |---|---|
-   | `DATABASE_URL` | the **session pooler** string (port 5432), with your password |
+   | `DATABASE_URL` | the **pooler** connection string, with your password |
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://abcdefgh.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | the long `eyJ…` secret |
    | `NEXT_PUBLIC_SITE_URL` | `https://your-project.vercel.app` for now |
@@ -220,11 +220,11 @@ npm run admin:password -- you@example.com "a long new password"
 ```
 
 **Pages hang and never finish loading**
-`DATABASE_URL` is almost certainly on port **6543**. Change it to **5432** (the
-session pooler) and redeploy. Check the Vercel function logs — the app logs a
-warning naming this exact problem when it sees 6543.
+Make sure the deployed code includes `max_pipeline: 0` in `lib/db/index.ts` —
+pipelined queries on the transaction pooler are what used to stall. Then check
+the Vercel function logs for the real error (a wrong password or a paused
+Supabase project shows up there as a connection error).
 
 **"Too many connections"**
-Session mode holds one server connection per client connection. Lower
-`DB_POOL_MAX` (default 3) in your environment variables, or upgrade the Supabase
+Lower `DB_POOL_MAX` (default 4) in your environment variables, or upgrade the Supabase
 plan if real traffic has outgrown the free tier.

@@ -7,11 +7,13 @@ import { listMedia } from "@/lib/repo/media";
 import { NewProjectButton } from "@/components/admin/NewProjectButton";
 
 export default async function OverviewPage() {
-  const counts = await countProjects();
-  const settings = await getSettings();
-  const recent = (await listProjects({ status: "all", sort: "newest", limit: 6 })).items;
-  const media = await listMedia({ limit: 1 });
-  const categories = await listCategories();
+  const [counts, settings, { items: recent }, media, categories] = await Promise.all([
+    countProjects(),
+    getSettings(),
+    listProjects({ status: "all", sort: "newest", limit: 6 }),
+    listMedia({ limit: 1 }),
+    listCategories(),
+  ]);
 
   const a = settings.availability;
   const statusLabel =

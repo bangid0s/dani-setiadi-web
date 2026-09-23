@@ -8,7 +8,7 @@ import {
 } from "@/lib/validation";
 import type {
   AboutContent, Availability, Category, ContactContent, Experience, GallerySettings,
-  HeroContent, Project, ProjectLink, ProjectMediaItem, Section, SectionKey, SiteSettings,
+  HeroContent, Project, Section, SectionKey, SiteSettings,
   SocialLink, Tool, UiLabels, WorkContent,
 } from "@/lib/types";
 
@@ -72,23 +72,22 @@ export async function updateSectionMeta(
   key: SectionKey,
   patch: { label?: string; isVisible?: boolean },
 ): Promise<void> {
-  if (patch.label !== undefined) {
-    await sql`update sections set label = ${patch.label} where key = ${key}`;
-  }
-  if (patch.isVisible !== undefined) {
-    await sql`update sections set is_visible = ${patch.isVisible} where key = ${key}`;
-  }
+  const sets: Record<string, unknown> = {};
+  if (patch.label !== undefined) sets.label = patch.label;
+  if (patch.isVisible !== undefined) sets.is_visible = patch.isVisible;
+  if (Object.keys(sets).length === 0) return;
+  await sql`update sections set ${sql(sets)} where key = ${key}`;
 }
 
 const CHAPTER_ORDER: SectionKey[] = ["hero", "work", "about", "contact"];
 
 export async function reorderSections(keys: string[]): Promise<void> {
-  await sql.begin(async (tx) => {
-    for (const [i, key] of keys.entries()) {
-      if (!CHAPTER_ORDER.includes(key as SectionKey)) continue;
-      await tx`update sections set sort_order = ${i + 1} where key = ${key}`;
-    }
-  });
+  const known = keys.filter((k) => CHAPTER_ORDER.includes(k as SectionKey));
+  if (known.length === 0) return;
+  await sql`
+    update sections s set sort_order = x.ord
+    from jsonb_array_elements_text(${sql.json(known)}::jsonb) with ordinality as x(key, ord)
+    where s.key = x.key`;
 }
 
 // --- Site settings ----------------------------------------------------------
@@ -402,31 +401,32 @@ export const reorderCategories = (ids: string[]) => reorder("categories", ids);
 
 // --- Shared helpers ---------------------------------------------------------
 
-const REORDERABLE = new Set(["tools", "experiences", "categories", "projects", "project_media"]);
+const REORDERABLE = new Set(["tools", "experiences", "categories", "projects"]);
 
+/** Rewrites the whole order in one statement rather than one UPDATE per row. */
 async function reorder(table: string, ids: string[]): Promise<void> {
   if (!REORDERABLE.has(table)) throw new Error(`Refusing to reorder unknown table ${table}`);
   if (ids.length === 0) return;
-  await sql.begin(async (tx) => {
-    for (const [i, id] of ids.entries()) {
-      await tx`update ${tx(table)} set sort_order = ${i + 1} where id = ${id}`;
-    }
-  });
+  await sql`
+    update ${sql(table)} t set sort_order = x.ord
+    from jsonb_array_elements_text(${sql.json(ids)}::jsonb) with ordinality as x(id, ord)
+    where t.id::text = x.id`;
 }
 
 const SLUGGABLE = new Set(["categories", "projects"]);
 
+/** `base`, or `base-2`, `base-3`… — whichever is free. One query. */
 export async function uniqueSlug(table: string, base: string, ignoreId?: string): Promise<string> {
   if (!SLUGGABLE.has(table)) throw new Error(`Refusing to slug unknown table ${table}`);
-  let candidate = base;
-  let n = 1;
-  for (;;) {
-    const rows = ignoreId
-      ? await sql<Row[]>`select id from ${sql(table)} where slug = ${candidate} and id <> ${ignoreId}`
-      : await sql<Row[]>`select id from ${sql(table)} where slug = ${candidate}`;
-    if (rows.length === 0) return candidate;
-    candidate = `${base}-${++n}`;
-  }
+  const others = ignoreId ? sql`and id <> ${ignoreId}` : sql``;
+  const rows = await sql<Row[]>`
+    select slug from ${sql(table)}
+    where (slug = ${base} or slug like ${`${base.replace(/[\\%_]/g, "\\$&")}-%`}) ${others}`;
+  const taken = new Set(rows.map((r) => String(r.slug)));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
 }
 
 export type { Project };

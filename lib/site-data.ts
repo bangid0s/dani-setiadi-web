@@ -24,7 +24,7 @@ export async function toGalleryItem(p: Project): Promise<GalleryItem> {
     openAs: p.openAs,
     externalUrl: p.externalUrl,
     // A project earns its own page once it has a story, extra media or links.
-    hasPage: Boolean(p.body?.trim()) || p.gallery.length > 0 || p.links.length > 0,
+    hasPage: p.hasPage,
     media,
     poster: media?.posterMediaId ? await getMedia(media.posterMediaId) : null,
     summary: p.summary,
@@ -55,7 +55,7 @@ export async function toGalleryItems(projects: Project[]): Promise<GalleryItem[]
       ratio,
       openAs: p.openAs,
       externalUrl: p.externalUrl,
-      hasPage: Boolean(p.body?.trim()) || p.gallery.length > 0 || p.links.length > 0,
+      hasPage: p.hasPage,
       media,
       poster: media?.posterMediaId ? (posters.get(media.posterMediaId) ?? null) : null,
       summary: p.summary,

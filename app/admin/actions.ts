@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, setAdminPassword, createAdmin, deleteAdmin, countAdmins, findAdminByEmail } from "@/lib/auth";
 import { slugify } from "@/lib/ids";
@@ -17,9 +17,9 @@ import {
 } from "@/lib/repo/content";
 import {
   createProject, updateProject, setProjectStatus, toggleFeatured, reorderProjects,
-  reorderFeatured, softDeleteProject, hardDeleteProject, restoreProject, getProjectById,
+  reorderFeatured, softDeleteProject, hardDeleteProject, restoreProject,
   addProjectMedia, updateProjectMedia, removeProjectMedia, reorderProjectMedia,
-  setProjectLinks, publishBlockers,
+  publishBlockers,
 } from "@/lib/repo/projects";
 import { updateMediaMeta, softDeleteMedia, getMedia } from "@/lib/repo/media";
 import { deleteObject, MEDIA_BUCKET, FILES_BUCKET } from "@/lib/storage";
@@ -37,12 +37,17 @@ function objectPathFromUrl(url: string | null): string | null {
   return i === -1 ? null : decodeURI(url.slice(i + marker.length));
 }
 
-/** Every admin write refreshes the public cache (PRD §10.3 / §11.2). */
+/**
+ * Every admin write refreshes the public cache (PRD §10.3 / §11.2).
+ *
+ * `updateTag` expires the cached reads outright, so the page the action lands
+ * on shows the change. `revalidateTag(…, "max")` — used here before — only
+ * marks them stale: the next request is still served the old data, which made
+ * saves look like they had not happened.
+ */
 function revalidateSite() {
+  updateTag("site");
   revalidatePath("/", "layout");
-  try {
-    revalidateTag("site", "max");
-  } catch {}
 }
 
 const str = (fd: FormData, key: string) => String(fd.get(key) ?? "");
@@ -108,13 +113,16 @@ export async function saveSectionAction(
 
 export async function saveSectionsOrderAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  await reorderSections(list(formData, "key"));
-  for (const key of list(formData, "key")) {
-    await updateSectionMeta(key as SectionKey, {
-      label: String(formData.get(`label-${key}`) ?? "").slice(0, 32) || key,
-      isVisible: formData.getAll(`visible-${key}`).includes("1"),
-    });
-  }
+  const keys = list(formData, "key");
+  await Promise.all([
+    reorderSections(keys),
+    ...keys.map((key) =>
+      updateSectionMeta(key as SectionKey, {
+        label: String(formData.get(`label-${key}`) ?? "").slice(0, 32) || key,
+        isVisible: formData.getAll(`visible-${key}`).includes("1"),
+      }),
+    ),
+  ]);
   revalidateSite();
   revalidatePath("/admin/sections");
 }
@@ -407,44 +415,27 @@ export async function saveProjectAction(
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
 
+  const links = formData
+    .getAll("linkLabel")
+    .map(String)
+    .map((label, i) => ({ label, url: String(formData.getAll("linkUrl")[i] ?? "") }));
+
+  // Publishing runs the checklist first; a blocked publish still saves the
+  // edits, as a draft, so nothing typed is lost.
+  const blockers = intent === "publish" ? await publishBlockers(parsed.data, id || null) : [];
+  const status =
+    intent === "publish" ? (blockers.length > 0 ? "draft" : "published") : parsed.data.status;
+
   let projectId = id;
-  if (!projectId) {
-    projectId = await createProject({ ...parsed.data, status: "draft" });
-  }
-
-  const linkLabels = formData.getAll("linkLabel").map(String);
-  const linkUrls = formData.getAll("linkUrl").map(String);
-
-  if (intent === "publish") {
-    const existing = projectId ? await getProjectById(projectId) : null;
-    const mockProject = {
-      ...parsed.data,
-      gallery: existing ? existing.gallery : [],
-      categories: parsed.data.categoryIds.map((cId) => ({ id: cId }))
-    } as any;
-    
-    const blockers = await publishBlockers(mockProject);
-    if (blockers.length > 0) {
-      if (id) await updateProject(projectId, { ...parsed.data, status: "draft" });
-      await setProjectLinks(
-        projectId,
-        linkLabels.map((label, i) => ({ label, url: linkUrls[i] ?? "" })),
-      );
-      revalidatePath(`/admin/projects/${projectId}`);
-      return { error: blockers.map((b) => b.message).join(" "), success: null };
-    }
-    await updateProject(projectId, { ...parsed.data, status: "published" });
-  } else {
-    await updateProject(projectId, parsed.data);
-  }
-
-  await setProjectLinks(
-    projectId,
-    linkLabels.map((label, i) => ({ label, url: linkUrls[i] ?? "" })),
-  );
+  if (projectId) await updateProject(projectId, { ...parsed.data, status, links });
+  else projectId = await createProject({ ...parsed.data, status, links });
 
   revalidateSite();
   revalidatePath(`/admin/projects/${projectId}`);
+
+  if (blockers.length > 0) {
+    return { error: blockers.map((b) => b.message).join(" "), success: null };
+  }
   redirect(`/admin/projects?msg=${intent === "publish" ? "Project+published" : "Project+saved"}`);
 }
 
@@ -497,35 +488,40 @@ export async function reorderProjectsAction(formData: FormData): Promise<void> {
 export async function addProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const projectId = str(formData, "projectId");
-  for (const mediaId of list(formData, "mediaId")) {
-    await addProjectMedia(projectId, mediaId, str(formData, "width") === "half" ? "half" : "full");
-  }
+  await addProjectMedia(
+    projectId,
+    list(formData, "mediaId"),
+    str(formData, "width") === "half" ? "half" : "full",
+  );
   revalidateSite();
   revalidatePath(`/admin/projects/${projectId}`);
 }
 
 export async function updateProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  await updateProjectMedia(str(formData, "id"), {
+  const projectId = str(formData, "projectId");
+  await updateProjectMedia(projectId, str(formData, "id"), {
     width: str(formData, "width") === "half" ? "half" : "full",
     caption: str(formData, "caption"),
   });
   revalidateSite();
-  revalidatePath(`/admin/projects/${str(formData, "projectId")}`);
+  revalidatePath(`/admin/projects/${projectId}`);
 }
 
 export async function removeProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  await removeProjectMedia(str(formData, "id"));
+  const projectId = str(formData, "projectId");
+  await removeProjectMedia(projectId, str(formData, "id"));
   revalidateSite();
-  revalidatePath(`/admin/projects/${str(formData, "projectId")}`);
+  revalidatePath(`/admin/projects/${projectId}`);
 }
 
 export async function reorderProjectMediaAction(formData: FormData): Promise<void> {
   await requireAdmin();
-  await reorderProjectMedia(list(formData, "id"));
+  const projectId = str(formData, "projectId");
+  await reorderProjectMedia(projectId, list(formData, "id"));
   revalidateSite();
-  revalidatePath(`/admin/projects/${str(formData, "projectId")}`);
+  revalidatePath(`/admin/projects/${projectId}`);
 }
 
 // --- Media library ----------------------------------------------------------

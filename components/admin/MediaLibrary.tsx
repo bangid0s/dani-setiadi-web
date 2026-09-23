@@ -115,7 +115,7 @@ export function MediaLibrary({
                   }`}
                 >
                   <span className="block aspect-square overflow-hidden bg-surface">
-                    <Thumb media={m} />
+                    <Thumb media={m} sizes="(max-width: 640px) 50vw, 220px" />
                   </span>
                   <span className="block truncate px-2 py-1.5 text-[12px] text-ink">
                     {m.title ?? "Untitled"}
@@ -135,7 +135,7 @@ export function MediaLibrary({
           <div className="flex flex-col gap-5 sm:flex-row">
             <div className="w-full shrink-0 sm:w-56">
               <div className="aspect-[4/3] overflow-hidden rounded-[var(--radius-admin)] border border-line bg-surface">
-                <Thumb media={selected} />
+                <Thumb media={selected} sizes="(max-width: 640px) 100vw, 224px" />
               </div>
               <p className="mt-2 text-[12px] text-muted">
                 {selected.width} × {selected.height}

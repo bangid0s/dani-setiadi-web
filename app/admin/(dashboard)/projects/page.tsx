@@ -17,11 +17,10 @@ export default async function ProjectsPage({
     ? (sp.status as ProjectStatus)
     : "all";
 
-  const { items } = await listProjects({
-    status,
-    categorySlug: sp.category ?? null,
-    search: sp.q,
-  });
+  const [{ items }, categories] = await Promise.all([
+    listProjects({ status, categorySlug: sp.category ?? null, search: sp.q }),
+    listCategories(),
+  ]);
 
   return (
     <>
@@ -34,12 +33,12 @@ export default async function ProjectsPage({
         {sp.msg && <FormSuccess message={sp.msg} />}
         <ProjectsTable
           projects={items}
-          categories={await listCategories()}
+          categories={categories}
           activeStatus={status}
           activeCategory={sp.category ?? ""}
           query={sp.q ?? ""}
         />
-        <BulkUpload categories={await listCategories()} />
+        <BulkUpload categories={categories} />
       </div>
     </>
   );
